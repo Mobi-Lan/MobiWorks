@@ -1,0 +1,147 @@
+/* **변수마다 기본값을 붙인다.** 이 파일은 네 화면에 다 실리는데, **연주 쪽 화면은
+   우리 `tokens.css` 를 싣지 않는다** — 제 색표를 따로 들고 있다. 그래서 `var(--panel)`
+   이 빈 값이 되어 **레일이 투명하게 떠 있었다**. 스무 개 중 열넷이 그랬다.
+   기본값은 디자인의 기본 색이다: 패널 #0d1420 · 테두리 #23303f / #16202c ·
+   강조 #e2b866 · 실행 #7aa2e8. 색표가 있는 화면에서는 그 값이 이긴다. */
+/* 통합 셸 — 왼쪽 레일
+   ───────────────────────────────────────────────────────────────────────
+   레일이 말하는 것:
+     · 지금 어느 앱인가 — **앱 색 테두리 + 12~16% 채움** (비활성은 #23303f 외곽선)
+     · 안 보이는 쪽의 알림 — 워커스는 **파랑 숫자 배지**, 폴리오는 **골드 7px 점**
+     · 「우선」 세로 스위치 22×46 — 위면 연주(♪), 아래면 작업(∞)
+     · ⚙ — 앱 공통 설정
+
+   아이콘은 **앱 파비콘**을 쓴다. 두 앱이 이미 제 아이콘을 갖고 있어
+   레일에서 다시 그릴 이유가 없다. */
+#rail{position:fixed;left:0;top:0;bottom:0;width:38px;z-index:40;
+  display:flex;flex-direction:column;align-items:center;gap:7px;padding:8px 0;
+  background:var(--panel, #0d1420);border-right:1px solid var(--line, #16202c);flex-shrink:0}
+body.has-rail{padding-left:38px}
+
+/* 앱 한 칸 — 26×26 · radius 8 */
+#rail .app{position:relative;display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border-radius:8px;flex-shrink:0;padding:0;cursor:pointer;
+  background:transparent;border:1px solid var(--line3, #23303f);text-decoration:none}
+#rail .app img{width:18px;height:18px;display:block;border-radius:4px}
+#rail .app:hover{background:var(--hover, #16202c)}
+/* 활성 — **앱 색**이다. 둘을 같은 골드로 칠하면 어느 앱인지가 아니라
+   「무언가 켜졌다」만 남는다 (폴리오 골드 · 워커스 파랑). */
+#rail .app.on[data-app="folio"]{background:var(--goldbg, rgba(226,184,102,.14));border-color:color-mix(in srgb,var(--gold, #e2b866) 50%,transparent)}
+#rail .app.on[data-app="works"]{background:var(--runbg, rgba(122,162,232,.16));border-color:color-mix(in srgb,var(--run, #7aa2e8) 50%,transparent)}
+/* 안 보고 있는 쪽은 흐리게 — 테두리만으로는 한눈에 안 갈린다 */
+#rail .app:not(.on) img{opacity:.55;filter:grayscale(.5)}
+#rail .app:hover img{opacity:.9;filter:grayscale(.15)}
+
+/* 알림 — **켜진 앱에는 안 붙인다.** 그 화면을 보고 있으면 이미 아는 일이고,
+   레일의 뜻은 「안 보이는 쪽에서 무슨 일이 일어나는가」다. */
+#rail .badge,#railBtn .badge{position:absolute;right:-3px;top:-3px;
+  min-width:13px;height:13px;padding:0 3px;border-radius:7px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--blue, #7aa2e8);color:var(--bg, #0b1018);font:700 8px/1 Consolas,'Cascadia Mono',monospace;
+  border:1px solid var(--panel, #0d1420)}
+#rail .dot{position:absolute;right:-2px;top:-2px;width:7px;height:7px;border-radius:50%;
+  background:var(--gold, #e2b866);border:1px solid var(--panel, #0d1420)}
+
+#rail .grow{flex:1}
+
+/* 「우선」 — 8px 라벨 + 세로 스위치 22×46, 손잡이 16px */
+#rail .prilb{font-size:8px;line-height:1;letter-spacing:.04em;color:var(--sub2, #6f7a8a);flex-shrink:0}
+#rail .pri{display:flex;flex-direction:column;width:22px;height:46px;padding:2px;
+  border-radius:11px;background:var(--inset, #0b0f14);border:1px solid var(--line3, #23303f);
+  flex-shrink:0;cursor:pointer;justify-content:flex-start}
+#rail .pri[data-pri="work"]{justify-content:flex-end}
+/* 셋째 자리 「이 곡」(song) — 손잡이가 가운데 (우선 3단 — 위 연주 · 가운데 이 곡 · 아래 작업) */
+#rail .pri[data-pri="song"]{justify-content:center}
+/* 손잡이 — 16px 원 안의 글자가 9px 이면 **무엇인지 안 보인다**.
+   원은 그대로 두고 글자만 키운다.
+   `line-height:0` 으로 글자 상자의 위아래 여백을 없앤다 — ♪ 와 ∞ 는 글꼴 안에서
+   기준선 위치가 서로 달라, 여백이 남아 있으면 한쪽이 위로 뜬 채 굳는다. */
+/* 안의 글리프(♪/∞)는 shell.js 가 **SVG 글자**로 그린다 — 폰트 글자를 flex 로 가운데 놓으면
+   글자 상자의 기준선 때문에 ♪ 는 왼쪽 아래로, ∞ 는 위로 치우쳐 원을 벗어났다.
+   여기서는 원과 색만. */
+#rail .pri .knob{width:16px;height:16px;border-radius:50%;display:flex;
+  align-items:center;justify-content:center;overflow:hidden;
+  background:var(--gold, #e2b866);color:var(--ongold, #1a1608)}
+#rail .pri .knob svg{display:block}
+#rail .pri[data-pri="work"] .knob{background:var(--blue, #7aa2e8);color:var(--bg, #0b1018)}
+#rail .pri[data-pri="song"] .knob{background:var(--ok, #7fc79a);color:var(--bg, #0b1018)}
+
+/* ⚙ — 앱 공통 설정 (26×26 · radius 8 · #23303f 외곽선) */
+#rail .gear{display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border-radius:8px;flex-shrink:0;padding:0;cursor:pointer;
+  border:1px solid var(--line3, #23303f);background:transparent;color:var(--sub, #8b97a6);font-size:11px}
+#rail .gear:hover{background:var(--hover, #16202c);color:var(--fg, #e9ecf1)}
+
+/* 로고 버튼 — **머리줄 왼쪽. 이것이 레일 토글이다**.
+   글리프는 **지금 앱**(♪ / ∞), 옆의 작은 꺾쇠가 ◀ 접기 / ▶ 펼치기.
+   레일을 숨기면 **알림이 여기 배지로 옮겨 온다** — 안 그러면 접은 동안 아무것도 모른다. */
+#railBtn{position:relative;display:inline-flex;align-items:center;gap:5px;
+  height:22px;padding:0 7px;margin-right:8px;flex:none;cursor:pointer;
+  border-radius:7px;background:var(--card2, #111a26);border:1px solid var(--line3, #23303f);
+  font:700 11px/1 var(--font, 'Segoe UI','맑은 고딕',system-ui,sans-serif);color:var(--gold, #e2b866)}
+#railBtn[data-app="works"]{color:var(--blue, #7aa2e8)}
+#railBtn:hover{border-color:var(--gold3, #c9a962)}
+#railBtn .caret{color:var(--sub2, #6f7a8a);font-size:9px;font-weight:400}
+/* 길게 누르는 버튼이라 폰의 글자 선택·길게 누르기 풍선이 끼어들지 않게 */
+#railBtn{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+
+/* ── 앱 목록 — 로고 버튼을 **길게 누르면** 바로 아래에 뜬다 ──
+   모양은 **레일 칸과 같은 토큰**: 패널 바탕 · --line3 테두리 · radius 8. 아이콘도 레일과 같은 그림,
+   활성 앱은 레일처럼 **앱 색** 테두리+채움.
+   행 이름은 `ra-` 접두 — 폴리오 화면의 인라인 `.row`(곡 목록 행: grid·여백·아랫선)가 맨 `.row` 로 새어 들었다. 알림은 행 오른쪽 끝에 (레일은 칸 모서리에 얹지만
+   행은 자리가 넉넉해 이름을 가리지 않게 옆에 둔다). 위치(top/left)는 shell.js 가 버튼에서 잰다. */
+#railApps{position:fixed;z-index:42;display:flex;flex-direction:column;gap:2px;
+  min-width:148px;max-width:calc(100vw - 16px);padding:4px;
+  background:var(--panel, #0d1420);border:1px solid var(--line3, #23303f);border-radius:8px;
+  box-shadow:0 6px 18px var(--shadow, rgba(0,0,0,.55))}
+#railApps[hidden]{display:none}
+#railApps .ra-row{position:relative;display:flex;align-items:center;gap:8px;height:30px;padding:0 8px;
+  border-radius:6px;border:1px solid transparent;text-decoration:none;white-space:nowrap;cursor:pointer;
+  color:var(--fg, #e9ecf1);font:12px/1 var(--font, 'Segoe UI','맑은 고딕',system-ui,sans-serif)}
+#railApps .ra-row:hover,#railApps .ra-row:focus-visible{background:var(--hover, #16202c);outline:none}
+#railApps .ra-row img{width:18px;height:18px;display:block;border-radius:4px;flex:none}
+#railApps .ra-row .ra-nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+#railApps .ra-row.on[data-app="folio"]{background:var(--goldbg, rgba(226,184,102,.14));border-color:color-mix(in srgb,var(--gold, #e2b866) 50%,transparent)}
+#railApps .ra-row.on[data-app="works"]{background:var(--runbg, rgba(122,162,232,.16));border-color:color-mix(in srgb,var(--run, #7aa2e8) 50%,transparent)}
+#railApps .badge{min-width:13px;height:13px;padding:0 3px;border-radius:7px;flex:none;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--blue, #7aa2e8);color:var(--bg, #0b1018);font:700 8px/1 Consolas,'Cascadia Mono',monospace}
+#railApps .dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--gold, #e2b866)}
+
+/* 열린 동안 뒤를 덮는다 — 밖을 누르면 닫힌다 (좁은 화면에서만 쓴다) */
+#railScrim{display:none;position:fixed;inset:0;z-index:39;background:var(--backdrop, rgba(5,8,12,.72))}
+
+/* ── 레일을 접었을 때 ───────────────────────────────────────────────────
+   레일을 숨기면 알림이 로고 버튼 배지로 옮겨 가고 **본문이 38px 넓어진다**.
+   그래서 밀어 두는 것이 아니라 **자리째 비운다.** */
+body.rail-off{padding-left:0}
+body.rail-off #rail{display:none}
+
+/* ── 좁은 화면 ──────────────────────────────────────────────────────────
+   **아래로 내리지 않는다** — 그대로 왼쪽에 둔다.
+   자리가 폭에 따라 옮겨 다니면 같은 것을 두 군데서 찾게 된다.
+
+   좁으면 기본이 접힘이고, 펼치면 **38px 만** 나온다 — 화면을 덮는 서랍이 아니다.
+   본문은 밀리지 않고 레일이 그 위에 얹힌다: 38px 을 빼면 카드가 눌린다.
+   우리가 받쳐 주는 최소 폭은 375px 이다. */
+@media (width < 600px){
+  body.has-rail{padding-left:0}
+  /* **접혀 있으면 밀어 둔다.** 이 줄이 빠져 있어서 좁은 창에서 레일이 접힌 채로도
+     본문 위에 그대로 얹혀 있었다 — 시작 버튼과 탭이 왼쪽에서 잘렸다.
+     넓은 화면은 `body.rail-off` 가 자리째 비우고, 여기서는 얹히는 것이라 밀어 둔다. */
+  #rail{transform:translateX(-100%);transition:transform .16s ease}
+  /* **머리줄 아래에서 시작한다**. 맨 위부터 덮으면 연주 칸이 로고 버튼 위에 얹혀,
+     닫으려고 버튼을 다시 누르면 `/folio/` 로 넘어갔다. `--rail-top` 은 shell.js 가 머리줄 아랫변에서 잰다. */
+  #rail,#railScrim{top:var(--rail-top, 0px)}
+  body.rail-open #rail{transform:none;box-shadow:3px 0 14px var(--shadow, rgba(0,0,0,.55))}
+  body.rail-open #railScrim{display:block}
+  /* **펼쳐도 짧은 칸이다** — 레일이 검색 칸을 덮으면 안 된다.
+     바닥까지 내려오던 기둥이 작업 쪽 바닥 「⌕ 찾기」·폴리오 발의 재생 단추 왼쪽을 덮었다. 앱 · 우선 · ⚙ 만큼만
+     내려오고(⚙ 를 바닥으로 미는 .grow 를 접는다), 폴리오는 찾기 칸 아래에서 시작한다(shell.js railTop).
+     자리는 그대로 왼쪽. 넓은 화면(600 이상)은 이 블록 밖이라 그대로다. */
+  #rail{bottom:auto;padding-bottom:9px;border-bottom:1px solid var(--line, #16202c);border-bottom-right-radius:10px}
+  #rail .grow{display:none}
+  /* 스크림은 **밖을 누르면 닫는 판**으로만 남기고 칠하지 않는다. 전에는 페이지 전체를 .72 로 어둡게 덮어
+     「가만히 있는데 화면이 어둡다」로 보였다. */
+  #railScrim{background:transparent}
+}

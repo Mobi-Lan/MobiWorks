@@ -1,0 +1,121 @@
+/* 필름형 — 가로로 흐르는 필름 띠에서 한 칸이 커져 와이드스크린 「스틸」이 된다.
+   모든 선택자는 .op-film 아래 (테마끼리 안 섞인다). 바탕은 투명 — 게임이 그대로 비친다. */
+.op-film {
+  position: fixed; inset: 0; pointer-events: none;
+  --ink: #f3eee4;
+  --muted: #b9b2a3;
+  --amber: #e2a24a;
+  --strip-h: 17vh;                 /* 필름 띠 높이 */
+  --strip-b: 12vh;                 /* 띠의 아래 여백 */
+  --bar-h: 11vh;                   /* 레터박스 띠 */
+  --sans: "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  --mono: "Space Mono", Consolas, "Courier New", monospace;
+  --dim-a: .18;                    /* 게임을 어둡게 하는 정도 — 호스트가 ?dim= 으로 덮는다 (카드형과 같은 기본값) */
+  color: var(--ink); font-family: var(--sans);
+  user-select: none; -webkit-user-select: none;
+}
+.op-film * { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* 게임을 살짝 어둡게 (≤ .18) */
+.op-film .fm-dim { position: fixed; inset: 0; background: rgba(12,10,8,0); transition: background .6s; }
+.op-film .fm-dim.on { background: rgba(12,10,8,var(--dim-a)); }
+
+/* 레터박스 — 들어올릴 때 위아래에서 밀려 들어오고, 퇴장 때 셔터처럼 닫힌다 */
+.op-film .fm-bar { position: fixed; left: 0; right: 0; height: var(--bar-h); background: rgba(6,6,6,.9); }
+.op-film .fm-bar.top { top: 0; transform-origin: top; transform: translateY(-100%); }
+.op-film .fm-bar.bot { bottom: 0; transform-origin: bottom; transform: translateY(100%); }
+
+/* ───────── 필름 띠 ───────── */
+.op-film .fm-strip { position: fixed; left: 0; right: 0; bottom: var(--strip-b); height: var(--strip-h);
+  filter: drop-shadow(0 14px 24px rgba(0,0,0,.45)); }
+.op-film .fm-cell {
+  position: absolute; left: 0; top: 0; height: 100%; width: var(--pitch);
+  background: #16130f; overflow: hidden;
+  will-change: transform;
+}
+/* 스프로킷 구멍 (위·아래 줄) — 칸마다 그려 띠와 같이 흐른다 */
+.op-film .fm-cell::before, .op-film .fm-cell::after {
+  content: ""; position: absolute; left: 0; right: 0; height: 9%;
+  background: repeating-linear-gradient(90deg, transparent 0 14%, rgba(238,230,214,.82) 14% 36%, transparent 36% 50%);
+  border-radius: 1px;
+}
+.op-film .fm-cell::before { top: 4%; }
+.op-film .fm-cell::after  { bottom: 4%; }
+.op-film .fm-frame {
+  position: absolute; left: 50%; top: 50%; height: 72%; aspect-ratio: 1 / 1.42; transform: translate(-50%, -50%);
+  background: var(--cover) center / cover no-repeat;
+  border-radius: 2px; overflow: hidden;
+  transition: filter .5s, opacity .3s;
+}
+.op-film .fm-frame::after {   /* 필름 유제의 번들거림 */
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(115deg, rgba(255,255,255,.18), transparent 40%, rgba(0,0,0,.25));
+}
+.op-film .fm-edge { position: absolute; left: 8%; bottom: 14.5%; font: 700 calc(var(--strip-h) * .05) var(--mono);
+  color: var(--amber); opacity: .75; letter-spacing: .12em; white-space: nowrap; }
+.op-film .fm-strip.sel .fm-frame { filter: brightness(.55) saturate(.7); }
+.op-film .fm-strip.sel .fm-cell.on .fm-frame { filter: none; }
+.op-film .fm-cell.gone .fm-frame { opacity: 0; }
+
+/* ───────── 스틸 (뽑힌 칸이 커진 것) ───────── */
+.op-film .fm-layer { position: fixed; inset: 0; }
+.op-film .fm-still {
+  position: absolute; overflow: hidden; background: #0b0a09;
+  container-type: inline-size;
+  box-shadow: 0 40px 90px -30px rgba(0,0,0,.7);
+}
+.op-film .fm-bg { position: absolute; inset: -8%;
+  background: var(--cover) center / cover no-repeat;
+  filter: blur(22px) brightness(.5) saturate(1.25); transform: scale(1.1); }
+.op-film .fm-vig { position: absolute; inset: 0;
+  background: radial-gradient(120% 95% at 50% 50%, transparent 45%, rgba(0,0,0,.62) 100%); }
+.op-film .fm-grain { position: absolute; inset: -40px; opacity: 0; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  animation: film-grain .42s steps(3) infinite; }
+.op-film .fm-flash { position: absolute; inset: 0; background: #fff8e6; opacity: 0; mix-blend-mode: screen; }
+.op-film .revealed .fm-grain { opacity: .5; transition: opacity .4s; }
+@keyframes film-grain { 0% { transform: translate(0,0); } 33% { transform: translate(-22px,14px); } 66% { transform: translate(16px,-19px); } 100% { transform: translate(-8px,7px); } }
+
+/* 포스터 — 띠에서 날아온 그 칸 (스틸 왼쪽에 세로로 선다) */
+.op-film .fm-poster { position: absolute; left: 0; top: 0; border-radius: 2px; overflow: hidden;
+  background: var(--cover) center / cover no-repeat;
+  box-shadow: 0 20px 50px -18px rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.08);
+  transform-origin: 0 0; will-change: transform; }
+
+/* 스틸 안의 글 — 크기는 스틸 폭 기준(cqw) */
+.op-film .fm-top { position: absolute; left: 31%; right: 31%; top: 8%; display: flex; justify-content: center; align-items: center; gap: 1.4cqw; }
+.op-film .fm-kicker { font: 400 1.25cqw var(--mono); letter-spacing: .32em; color: var(--muted); white-space: nowrap; }
+.op-film .fm-badge { font-size: 1.15cqw; font-weight: 700; padding: .35cqw 1cqw; border: 1.5px solid rgba(243,238,228,.8); border-radius: 999px; white-space: nowrap; }
+.op-film .fm-sub { position: absolute; left: 31%; right: 31%; bottom: 13%; text-align: center; }
+.op-film .fm-inst { font-size: 1.3cqw; color: #e7dcc4; opacity: .85; margin-bottom: .8cqw;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.op-film .fm-song { font-size: 3.5cqw; font-weight: 900; line-height: 1.12; letter-spacing: -.01em; word-break: keep-all;
+  color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.55), 0 0 18px rgba(0,0,0,.6);
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.op-film .fm-meta { margin-top: 1.1cqw; font: 400 1.1cqw var(--mono); color: var(--amber); letter-spacing: .14em; white-space: nowrap; }
+
+/* 크레딧 — 오른쪽 기둥에서 위로 올라간다 */
+.op-film .fm-credits { position: absolute; left: 71%; right: 4%; top: 9%; bottom: 9%; overflow: hidden;
+  -webkit-mask-image: linear-gradient(transparent, #000 16%, #000 84%, transparent);
+          mask-image: linear-gradient(transparent, #000 16%, #000 84%, transparent); }
+.op-film .fm-roll { position: absolute; left: 0; right: 0; top: 0; text-align: center; opacity: 0; }
+.op-film .fm-ch { font: 700 .95cqw var(--mono); letter-spacing: .4em; color: var(--muted); margin-bottom: 1.6cqw; }
+.op-film .fm-p { margin-bottom: 1.6cqw; line-height: 1.25; }
+.op-film .fm-p .t { display: block; font-size: 1.05cqw; color: var(--muted); }
+.op-film .fm-p .n { display: block; font-size: 1.7cqw; font-weight: 700; }
+.op-film .fm-p.more .n { font-weight: 400; color: var(--muted); }
+
+/* 드러내는 글 */
+.op-film .fm-top, .op-film .fm-inst, .op-film .fm-song, .op-film .fm-meta { opacity: 0; }
+.op-film .revealed .fm-top  { animation: film-in .6s cubic-bezier(.2,.8,.2,1) .05s forwards; }
+.op-film .revealed .fm-inst { animation: film-sub .5s ease-out .12s forwards; }
+.op-film .revealed .fm-song { animation: film-sub .6s ease-out .2s forwards; }
+.op-film .revealed .fm-meta { animation: film-in .6s ease-out .4s forwards; }
+@keyframes film-in  { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@keyframes film-sub { 0% { opacity: 0; } 40% { opacity: .7; } 55% { opacity: .45; } 100% { opacity: 1; } }   /* 영사기처럼 한 번 깜빡 */
+
+/* 하단 캡션 — 레터박스 아래 띠 안에 온다 */
+.op-film .fm-caption { position: fixed; left: 0; right: 0; bottom: 2.6vh; text-align: center;
+  text-shadow: 0 1px 3px rgba(0,0,0,.7); }
+.op-film .fm-caption small { display: block; color: #cfc6b4; font-size: 14px; font-weight: 700; letter-spacing: .02em; }
+.op-film .fm-caption b { display: block; font-weight: 500; font-size: 16px; color: #f3eee4; }

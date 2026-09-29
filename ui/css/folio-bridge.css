@@ -1,0 +1,61 @@
+/* 연주 쪽 화면의 색을 **작업 쪽 색표에서** 받아 온다 — 두 화면이 한 색표를 쓴다.
+   ───────────────────────────────────────────────────────────────────────
+   두 앱이 한 창에 들어왔는데 **색표를 두 벌 들고 있었다.** 이름도 값도 달라 같은 뜻의
+   자리가 서로 다른 색이었고, 무엇보다 **우리 색표를 안 싣는 화면에서는 레일이 통째로
+   투명했다**(`var(--panel)` 이 빈 값).
+
+   **연주 쪽 CSS 는 한 줄도 안 고친다.** 그쪽 규칙이 쓰는 **이름을 그대로 두고 값만**
+   작업 쪽 토큰에서 끌어온다.
+
+   싣는 차례가 곧 규칙이다 — 그쪽 `<style>` → `tokens.css` → 이 파일.
+     · **겹치는 이름**(`--bg`·`--gold`·`--line`·`--ok`…)은 `tokens.css` 가 **그냥 덮는다.**
+       여기서 다시 적으면 `--line: var(--line2)` 와 `--line2: var(--line)` 처럼
+       **서로를 가리켜 순환**이 되고, CSS 는 순환을 통째로 무효로 만든다 (실제로 그렇게
+       한 번 지었다가 색이 다 날아갔다).
+     · 여기서는 **그쪽에만 있는 이름**만 잇는다.
+
+   덤으로 **테마가 따라온다**: `tokens.css` 에는 라이트 값이 있고 그쪽에는 없었다.
+   이제 연주 화면도 라이트에서 같이 바뀐다. */
+:root{
+  /* 면 — 뒤에서 앞으로 */
+  --bar: var(--panel);            /* 머리줄·발 */
+  --head: var(--panel);
+  --strip: var(--card);
+
+  /* 선 */
+  --rowline: var(--line);
+  --ctl: var(--line2);
+  --dash: var(--line3);
+
+  /* 금색 */
+  --gold-hi: var(--goldhover);
+  --on-gold: var(--ongold);
+  --gold-dim: var(--golddim);
+  --gold-badge: var(--golddim);
+  --gold-badge-line: var(--goldline);
+  --gold-line: var(--goldline);
+  --gold-fill: var(--goldbg);
+  --gold-wash: var(--goldwash);
+  --play-bg: var(--goldwash);
+
+  /* 글자 — 진한 것부터 */
+  --title: var(--gold2);
+  --ink: var(--fg);
+  --row: var(--fg2);
+  --chip: var(--fg2);
+  --ctl-ink: var(--fg2);
+  --row-sub: var(--sub);
+  --bartext: var(--sub);
+  --faint3: var(--dim);
+
+  /* **`--mono` 는 그쪽에서 색 이름이다** (우리 쪽에서는 글꼴 묶음이다).
+     이름이 같고 뜻이 다른 유일한 자리라, `tokens.css` 가 덮으면 글꼴 문자열이
+     색 자리에 들어가 **글자가 통째로 사라진다.** 그래서 여기서 되돌려 놓는다.
+     (그 대신 우리 `shell.css` 는 `--mono` 를 안 쓰고 글꼴을 직접 적는다.) */
+  --mono: var(--sub);
+
+  /* 상태 */
+  --ok-dot: var(--ok);
+  --ok-line: var(--okbg);
+  --track: var(--soft);
+}

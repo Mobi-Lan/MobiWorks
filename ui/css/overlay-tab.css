@@ -1,0 +1,50 @@
+/* overlay-tab.css — 오버레이 설정 탭. 색은 전부 tokens.css 토큰.
+   밴드 자체(tkinter)는 토큰을 못 쓰므로 그쪽 색은 overlay.py 의 COLORS 한 곳에 모여 있다.
+   여기 미리보기는 그 색을 토큰으로 바꿔 놓은 것이라 값이 조금 다를 수 있다. */
+.ovcard{max-width:820px}
+.ovcard .srow:last-of-type{border-bottom:none}
+
+/* 켜기/끄기 토글 */
+.ov-tg{position:relative;width:38px;height:21px;padding:0;border-radius:11px;border:1px solid var(--line2);background:var(--soft);cursor:pointer;flex:none}
+.ov-tg:hover{border-color:var(--line3)}
+.ov-tg .knob{position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:var(--sub);transition:left .12s ease,background .12s ease}
+.ov-tg.on{background:var(--gold);border-color:var(--gold)}
+.ov-tg.on .knob{left:20px;background:var(--ongold)}
+
+.ovrange{width:180px;accent-color:var(--gold);background:transparent}
+/* 표시 항목 아래 한 줄 — 항목을 끄면 밴드가 짧아진다는 안내와 현재 폭 */
+.ovnote{padding:8px 0 2px;border-bottom:1px solid var(--line)}
+
+
+/* 미리보기 밴드 — 게임 위에 뜨는 모습 (높이 30px 한 줄) */
+.ovprev{display:flex;flex-direction:column;gap:8px;padding:14px;border:1px solid var(--line2);border-radius:10px;
+  background:radial-gradient(ellipse at 40% 50%,color-mix(in srgb,var(--green) 14%,var(--inset)) 0%,var(--inset) 70%)}
+.ovband{display:inline-flex;align-items:center;height:30px;width:fit-content;max-width:100%;overflow:hidden;
+  padding:0 4px;border:1px solid var(--line2);border-radius:15px;background:var(--bg);font-size:var(--fs-sm);white-space:nowrap}
+.ovband>*{flex:none}
+.ov-h{color:var(--dim);padding:0 7px;font-size:var(--fs-xs)}
+.ov-sep{width:1px;height:14px;background:var(--line2);margin:0 5px}
+.ov-dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:4px}
+.ov-run{background:var(--run)}.ov-ok{background:var(--ok)}.ov-bad{background:var(--bad)}
+.ov-q{color:var(--run);font-weight:600}
+.ov-badge{font-size:var(--fs-eyebrow);padding:1px 6px;border-radius:4px;font-weight:600;background:var(--gatherbg);color:var(--gather)}
+.ov-name{color:var(--strong);font-weight:600;padding:0 6px;max-width:92px;overflow:hidden;text-overflow:ellipsis}
+.ov-prog,.ov-round,.ov-time,.ov-cols{font-family:var(--mono)}
+.ov-cols{font-size:var(--fs-eyebrow);color:var(--dim)}
+.ov-cols .w{color:var(--fg2)}.ov-cols .d{color:var(--ok)}.ov-cols .f{color:var(--bad2)}
+.ov-prog{color:var(--fg2)}
+.ov-round{color:var(--gold)}
+.ov-alt{color:var(--sub);padding-right:6px}
+.ov-time{color:var(--warn);font-weight:600;padding-right:7px}
+.ov-done{color:var(--ok);font-weight:600}
+.ov-x{color:var(--faint);font-size:var(--fs-xs);padding:0 6px}
+.ov-btn{padding:2px 9px;border-radius:11px;background:var(--ok);color:var(--onok);font-weight:700;font-size:var(--fs-xs)}
+.ov-err{color:var(--bad2);font-weight:600;font-size:var(--fs-xs)}
+
+/* 탭 안에서 세로 스크롤이 생기게 한다.
+   layout.css 는 `main>section{display:flex;flex-direction:column}` 이고 `.card{overflow:hidden}` 이라,
+   .ovcard 가 flex 로 늘어나 높이에 갇힌 채 자기 내용을 잘라 버린다 — 스크롤이 생길 자리가 없었다(실측).
+   섹션을 블록으로 돌려 카드가 제 내용만큼 높아지게 하고, 넘치는 만큼 섹션이 스크롤한다.
+   overlay-tab.css 는 layout.css 뒤에 실리므로 이 재정의가 이긴다. */
+#tabOverlay{display:block;overflow-y:auto;overflow-x:hidden}
+.ovcard{overflow:visible}

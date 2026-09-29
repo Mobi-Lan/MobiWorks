@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>모비폴리오 · 설정</title>
+<!-- 공통 뼈대(머리·갈래 띠·행·스위치·발)는 folio-settings.css 에 있다 — greet.html 과 같이 쓴다.
+     아래 `<style>` 에는 이 화면에만 있는 것만 남긴다. -->
+<link rel="stylesheet" href="/css/folio-settings.css">
+<style>
+/* 설정 — **별개 페이지**. 예전에는 미니 창 안의 모달이었는데, 항목이 늘면서
+   좁은 창에 다 들어가지 않았고 연주 인사처럼 설명이 필요한 갈래를 담을 자리가 없었다.
+   미니판에만 있다 (정식판은 자기 설정 창이 따로 있다). 색·글꼴은 index.html 과 같은 값을 쓴다. */
+:root{
+  --bg:#0b1018; --bar:#0d1420; --inset:#111a26; --strip:#131c27;
+  --line:#26303d; --line2:#1b2634; --line3:#16202c; --rowline:#131c27; --ctl:#23303f; --dash:#2b3a4b;
+  --gold:#e2b866; --gold-hi:#f0d08a; --on-gold:#1a1608; --gold-dim:#a8833f;
+  --title:#f4e7c8; --row:#dce3ea; --row-sub:#8b97a6; --mono:#9aa3b2; --ink:#e9ecf1;
+  --ctl-ink:#c9d0da; --chip:#c2cad4; --faint:#6f7a8a; --faint2:#5c6878; --faint3:#4b5665;
+  --ok:#7fe0bd; --ok-line:rgba(95,199,164,.35);
+  --track:#1e2a38; --gold-fill:rgba(226,184,102,.12); --gold-line:rgba(226,184,102,.45);
+  --pink:#ff6f9c;
+  color-scheme:dark;
+}
+/* 갈래를 탭으로 바꾸면 짧은 갈래가 생긴다 — 꼬리말(면책)을 통 바닥에 붙인다. */
+#foot-risk{margin:auto 14px 6px}
+/* 「밖에서 접속·업데이트는 모비웍스 설정에서」 안내의 이동 단추 — 링크지만 모양은 .btn */
+#goWorksSet,#coverManage{display:inline-flex;align-items:center;text-decoration:none}
+/* 연출 테마 — 다섯 칸 중 하나 (카드형·필름형·티켓형·쇼츠형·랜덤). 모양은 .btn 과 같은 높이·테두리, 고른 칸만 금색 */
+.seg{display:inline-flex;border:1px solid var(--ctl);border-radius:8px;overflow:hidden}
+.seg button{height:28px;padding:0 12px;border:0;border-right:1px solid var(--ctl);background:none;color:var(--ctl-ink);font-size:12px;cursor:pointer}
+.seg button:last-child{border-right:0}
+.seg button:hover{color:var(--gold)}
+.seg button.on{background:var(--gold);color:var(--on-gold);font-weight:700}
+</style>
+<!-- 색은 **작업 쪽 색표 하나**를 쓴다. 차례가 규칙이다 —
+     위의 `<style>` 다음에 와야 겹치는 이름을 덮는다. -->
+<link rel="stylesheet" href="/css/tokens.css">
+<link rel="stylesheet" href="/css/folio-bridge.css">
+<link rel="stylesheet" href="/css/shell.css">
+<!-- 손가락 기기 규칙 — 작업 화면과 **같은 파일** (css/touch.css) · 맨 마지막 -->
+<link rel="stylesheet" href="/css/touch.css">
+<!-- 테마 (설정 ui_theme — 두 앱 공통). 이 PC 는 서버가 <html data-theme> 을 박아 내고, 폰은 이 파일이 머리에서 입힌다 -->
+<script src="/js/theme.js"></script>
+</head>
+<body>
+<div id="hd">
+  <button id="back">← 돌아가기</button>
+  <b>설정</b><span id="ver" class="mono"></span>
+</div>
+<div id="navrow">
+  <button class="nav on" data-s="s-play">연주</button>
+  <button class="nav" data-s="s-open">연출</button>
+  <button class="nav" data-s="s-ov">오버레이</button>
+  <button class="nav" data-s="s-gen">일반</button>
+</div>
+
+<div id="body">
+  <section id="s-play">
+    <h2>연주</h2>
+    <div class="r"><span class="lb"><b>기본 악기</b><i>곡에 악기를 지정하지 않았을 때 바꿔 들 악기입니다. 「그대로」면 지금 든 악기로 연주합니다.</i></span>
+      <select id="inst"></select></div>
+    <div class="r"><span class="lb"><b>곡 사이 대기</b><i>한 곡이 끝나고 다음 곡까지</i></span>
+      <span class="num" data-k="gap_sec" data-step="1" data-min="0" data-max="60" data-unit="초"><button data-d="-1">−</button><span></span><button data-d="1">+</button></span></div>
+    <div class="r"><span class="lb"><b>다음 곡 전환 여유</b><i>게임 연주가 반복 설정이면 곡이 스스로 안 끝나서 우리가 끊습니다. 0 이면 곡이 끝나는 시각에 맞춰, 값을 주면 그만큼 앞당겨 끊습니다.</i></span>
+      <span class="num" data-k="advance_margin" data-step="0.5" data-min="0" data-max="15" data-unit="초"><button data-d="-1">−</button><span></span><button data-d="1">+</button></span></div>
+    <div class="r"><span class="lb"><b>재생 전 현재 연주 정지</b><i>이미 연주 중이면 먼저 멈추고 새 곡을 보냅니다</i></span>
+      <span class="sw" data-k="stop_before_play"><i></i></span></div>
+    <div class="r" id="dismountRow"><span class="lb"><b>탈것이면 날개 5 로 내리고 재생</b><i>바로 제작 품목 하나를 걸었다가 곧바로 정지해 탈것에서 내립니다 — 재료는 안 쓰고 정령의 날개 5 가 듭니다. 품목은 그때 만들 수 있는 것 중 자동으로 고릅니다</i></span>
+      <span class="sw" data-k="folio_dismount_by_craft"><i></i></span></div>
+    <div class="r"><span class="lb"><b>합주 인식</b><i>내 <b class="mono">StartAt</b> 과 같은 사람을 함께 치는 사람으로 봅니다. <b>합주 중에는 자동 정지·자동 넘김을 하지 않습니다</b> — 붙어 있는 사람들이 계속 치기 때문입니다.</i></span>
+      <span class="sw" data-k="ensemble"><i></i></span></div>
+  </section>
+
+  <section id="s-open">
+    <h2>연주 시작 연출</h2>
+    <div class="r"><span class="lb"><b>연주 시작 연출</b><i>연주를 시작하면 게임 화면 위아래로 6초 연출이 지나갑니다</i></span>
+      <span class="sw" data-k="opening"><i></i></span></div>
+    <!-- 연출 테마 팩 (기본 카드형, 여기서 고른다).
+         값은 `opening_theme` — 연출 창이 연출마다 다시 읽는다(앱을 다시 켤 필요 없음). -->
+    <div class="r col" id="themeRow"><span class="lb"><b>연출 테마</b>
+      <i>연주를 시작할 때 나오는 6초 연출의 모양입니다 · 「미리 보기」는 고른 테마를 저장하고 게임 화면 위에 한 번 띄웁니다</i></span>
+      <div class="btns"><span class="seg" id="opTheme" role="radiogroup" aria-label="연출 테마"><button type="button" data-v="card" role="radio">카드형</button><button type="button" data-v="film" role="radio">필름형</button><button type="button" data-v="ticket" role="radio">티켓형</button><button type="button" data-v="phone" role="radio">쇼츠형</button><button type="button" data-v="random" role="radio" title="연출마다 넷 중 하나를 뽑습니다">랜덤</button></span>
+        <button class="btn" id="opPreview">미리 보기</button></div></div>
+    <!-- 카드 커버 — 곡 번호로 그림을 붙인다 -->
+    <div class="r col" id="coverRow"><span class="lb"><b>카드 커버</b>
+      <i>곡 번호로 파일 이름을 붙이세요 (예: 0012.png) · 1000×1420 권장 · 없으면 기본 커버</i>
+      <i class="mono" id="coverDir" style="word-break:break-all">—</i></span>
+      <div class="btns"><button class="btn" id="coverOpen">폴더 열기</button>
+        <a class="btn" id="coverManage" href="/folio/covers.html?from=settings">내 이미지 관리</a></div></div>
+  </section>
+
+  <section id="s-ov">
+    <h2>게임 위 오버레이</h2>
+    <div class="r"><span class="lb"><b>크기</b><i>게임 해상도에 맞춰 키우거나 줄입니다</i></span>
+      <span class="num" data-k="ov_scale" data-step="5" data-min="50" data-max="250" data-unit="%"><button data-d="-1">−</button><span></span><button data-d="1">+</button></span></div>
+    <div class="r"><span class="lb"><b>배경 불투명도</b><i>글자는 언제나 또렷하게 둡니다</i></span>
+      <span class="num" data-k="ov_alpha" data-step="5" data-min="10" data-max="100" data-unit="%"><button data-d="-1">−</button><span></span><button data-d="1">+</button></span></div>
+    <div class="r col" id="ovRow" hidden>
+      <div class="btns"><button class="btn" id="ovShow">오버레이 켜기</button><button class="btn" id="ovThru">스마트 관통</button><button class="btn" id="ovReset">위치 초기화</button></div></div>
+    <div class="note">Shift+F1 보이기·숨기기 · Shift+F10 스마트 관통 · Shift+F2 위치 고정 · Shift+F12 앞으로</div>
+  </section>
+
+  <section id="s-gen">
+    <h2>일반</h2>
+    <!-- 테마 — 설정 `ui_theme` (작업 화면과 **같은 값**). 누르면 바로 입히고 「저장」으로 남긴다.
+         폰에서는 「PC 설정」 칸이 보이고, 고른 값은 그 폰에만 바로 적용된다 (/js/theme.js) -->
+    <div class="r col" id="uiThemeRow"><span class="lb"><b>테마</b><i id="uiThemeHint">자동은 Windows 의 밝게·어둡게 설정을 따릅니다 · 누르면 바로 바뀌고, 「저장」을 누르면 다음에도 그대로 뜹니다 (작업 화면도 같이) · 게임 위 연출·오버레이는 늘 어둡게</i></span>
+      <div class="btns"><span class="seg" id="uiTheme" role="radiogroup" aria-label="테마"><button type="button" data-v="pc" role="radio" hidden>PC 설정</button><button type="button" data-v="auto" role="radio">자동</button><button type="button" data-v="dark" role="radio">다크</button><button type="button" data-v="light" role="radio">라이트</button></span></div></div>
+    <div class="r col" id="cliRow"><span class="lb"><b>CLI 실행파일 경로</b><i id="cliHint">—</i></span>
+      <input type="text" id="cli" placeholder="비우면 자동 탐색"></div>
+    <div class="r"><span class="lb"><b>시작할 때 자동 갱신</b><i>앱을 켤 때 악보함을 한 번 읽어 옵니다</i></span>
+      <span class="sw" data-k="auto_sync"><i></i></span></div>
+    <!-- 밖에서 접속·업데이트는 **모비웍스 설정 한 곳**에 있다. 여기 있던 두 갈래는
+         `/api/folio/remote/*`·`/api/folio/update/*` 를 불렀는데, 그 길은 서버가 넘기지 않는다
+         (server.py FOLIO_NEVER_PREFIX) — 단추가 전부 404 였다. 같은 기능을 두 벌 두지 않는다. -->
+    <div class="r col" id="elsewhere"><span class="lb"><b>밖에서 접속 · 업데이트</b>
+      <i>밖에서 접속·업데이트는 모비웍스 설정(∞ → 설정)에서 합니다.</i></span>
+      <div class="btns"><a class="btn" id="goWorksSet" href="/#settings">모비웍스 설정 열기</a></div></div>
+  </section>
+
+  <!-- 면책 — 갈래(탭) 밖에 두어 어느 갈래를 보든 늘 보이게 한다 -->
+  <div class="risk" id="foot-risk">모비웍스는 <b>비공식 팬 프로젝트</b>로
+    NEXON·devCAT 과 무관하며 이들의 보증을 받지 않았습니다. 이 도구가 <b>허가된 사용 방식인지는
+    확인되지 않았고</b>, 운영사는 CLI 사용에 따른 <b>모든 책임이 사용자에게 있다</b>고 밝히고 있습니다.
+    계정 제재를 포함한 결과는 본인 책임입니다.</div>
+</div>
+
+<div id="ft"><span id="msg"></span><button class="btn" id="cancel">되돌리기</button><button class="btn pri" id="save">저장</button></div>
+<div id="toast"></div>
+
+<script src="/folio/net.js"></script>
+<script src="/folio/inst.js"></script>
+<script>
+const TOKEN=MF.TOKEN,REMOTE=MF.REMOTE,CAN=MF.CAN,api=MF.api;   // 전송층은 net.js 가 쥔다 (PC 안·밖 겸용)
+/* 밖에서는 이 PC 의 창·프로세스·파일을 건드리는 것을 아예 감춘다.
+   서버도 같은 목록으로 막지만(REMOTE_NEVER), 눌러 봐야 안 되는 단추를 보여 줄 이유가 없다. */
+function hideLocalOnly(){
+  if(!REMOTE)return;
+  /* 지우지 않고 **감춘다**. 지우면 설정을 그리는 코드가 없는 칸을 찾아 터진다.
+     내용이 새는 것도 아니다 — 밖으로 나가는 설정에서는 서버가 인증키를 이미 지운다. */
+  {const el=document.getElementById("elsewhere");if(el)el.hidden=true;}   // 모비웍스 설정으로 가는 링크 = PC 화면 것
+  {const el=document.getElementById("coverRow");if(el)el.hidden=true;}    // 커버 폴더 = 이 PC 의 폴더·탐색기 창
+  {const el=document.getElementById("opPreview");if(el)el.hidden=true;}   // 미리 보기 = 이 PC 의 연출 창을 띄운다 (테마 고르기는 남긴다)
+  {const el=document.getElementById("cliRow");if(el)el.hidden=true;}     // CLI 실행파일 경로 = 이 PC 의 파일 (서버도 밖에서는 안 받는다)
+  if(!CAN.dismount){const el=document.getElementById("dismountRow");if(el)el.hidden=true;}   // 날개 5 가 드는 설정 = 이 PC 에서만 (서버도 밖에서는 안 받는다)
+  if(!CAN.overlay){   // 오버레이 갈래 전체 = 이 PC 화면 위의 창 (켜기·관통·위치 초기화 — 서버도 REMOTE_NEVER)
+    const sec=document.getElementById("s-ov");if(sec){sec.hidden=true;sec.dataset.off="1";}   // showSec 가 건너뛴다
+    const nav=document.querySelector('.nav[data-s="s-ov"]');if(nav)nav.hidden=true;}
+}
+const $=(id)=>document.getElementById(id);
+const esc=(s)=>String(s??"").replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));   // ' 도 — 따옴표 종류를 가리지 않게 (보안)
+let toastT=0;
+function toast(m,kind){const t=$("toast");t.textContent=m;t.className=(kind||"")+" show";
+  clearTimeout(toastT);toastT=setTimeout(()=>{t.className="";},3200);}
+function say(m,kind){$("msg").textContent=m||"";$("msg").className=kind||"";}
+
+/* 이 창이 살아 있다고 서버에 계속 알린다 — 미니판은 창이 닫히면 스스로 꺼지므로,
+   설정 페이지로 옮겨 온 동안에도 이 연결이 끊기면 안 된다 (index.html 과 같은 구조). */
+(async function hold(){if(!CAN.hold)return;   // 밖에서는 창 살아있음 신호를 보내지 않는다
+  for(;;){try{
+  const r=await fetch("/api/hold",{headers:{"X-Requested-With":"mobiworks","X-MobiWorks-Token":TOKEN},cache:"no-store"});
+  const rd=r.body.getReader();while(!(await rd.read()).done){}
+}catch{}await new Promise((res)=>setTimeout(res,1000));}})();
+
+/* ── 값 다루기 ── */
+const NUMS=[...document.querySelectorAll(".num")];
+const SWS=[...document.querySelectorAll(".sw")];
+let S={},cur={};
+const fmtNum=(v,step)=>(step<1?Number(v).toFixed(1):String(Math.round(v)));
+function paintNum(el){const k=el.dataset.k,step=Number(el.dataset.step);
+  el.querySelector("span").textContent=fmtNum(cur[k]??0,step)+(el.dataset.unit||"");}
+function paintSw(el){el.classList.toggle("on",!!cur[el.dataset.k]);}
+const OP_THEMES=["card","film","ticket","phone","random"];   // store._ENUMS["opening_theme"] 와 같다 — 모르는 값이면 기본(카드형)으로 보인다
+function paintTheme(){const v=OP_THEMES.includes(cur.opening_theme)?cur.opening_theme:"card";
+  for(const b of document.querySelectorAll("#opTheme button")){const on=b.dataset.v===v;b.classList.toggle("on",on);b.setAttribute("aria-checked",on?"true":"false");}}
+/* 화면 테마 (`ui_theme`). 이 PC 는 `cur.ui_theme` 을 칠하고 입힌다(미리 보기 · 「되돌리기」가 되돌린다).
+   폰은 그 폰의 선택(없으면 「PC 설정」) — 누르면 그 폰에만 바로 적용하고 저장에는 싣지 않는다 */
+const UI_THEMES=["auto","dark","light"];
+function paintUiTheme(){const T=window.MWTheme;if(!T)return;const rem=T.remote();
+  const v=rem?T.choice():(UI_THEMES.includes(cur.ui_theme)?cur.ui_theme:"auto");
+  for(const b of document.querySelectorAll("#uiTheme button")){if(b.dataset.v==="pc")b.hidden=!rem;
+    const on=b.dataset.v===v;b.classList.toggle("on",on);b.setAttribute("aria-checked",on?"true":"false");}
+  if(rem)$("uiThemeHint").textContent="기본은 PC 설정을 따릅니다 · 여기서 고르면 이 기기에만 바로 적용됩니다 (PC 화면은 그대로)";
+  else T.apply(v);}
+function paintAll(){
+  for(const el of NUMS)paintNum(el);
+  for(const el of SWS)paintSw(el);
+  paintTheme();
+  paintUiTheme();
+  $("cli").value=cur.cli_exe??"";
+  const sel=$("inst");
+  // 이름은 index.html 과 같은 「[종류] 이름」 — 종류는 서버 type 에서 (inst.js). 값은 원래 이름 그대로 저장한다
+  sel.innerHTML=`<option value="">그대로</option>`+(S.instruments||[]).map((i)=>`<option value="${esc(i.name)}">${esc(MFInst.label(i.name,i.type))}</option>`).join("");
+  sel.value=(S.instruments||[]).some((i)=>i.name===(cur.default_inst||""))?cur.default_inst:"";
+}
+for(const el of NUMS){
+  for(const b of el.querySelectorAll("button"))b.onclick=()=>{
+    const k=el.dataset.k,step=Number(el.dataset.step)*Number(b.dataset.d);
+    const lo=Number(el.dataset.min),hi=Number(el.dataset.max);
+    let v=Math.round(((Number(cur[k])||0)+step)*100)/100;
+    cur[k]=Math.min(hi,Math.max(lo,v));paintNum(el);dirty();};
+}
+for(const el of SWS)el.onclick=()=>{cur[el.dataset.k]=!cur[el.dataset.k];paintSw(el);dirty();};
+$("cli").oninput=()=>{cur.cli_exe=$("cli").value;dirty();};
+$("inst").onchange=()=>{cur.default_inst=$("inst").value;dirty();};
+for(const b of document.querySelectorAll("#opTheme button"))b.onclick=()=>{cur.opening_theme=b.dataset.v;paintTheme();dirty();};
+for(const b of document.querySelectorAll("#uiTheme button"))b.onclick=()=>{const T=window.MWTheme;if(!T)return;
+  if(T.remote()){T.save(b.dataset.v);paintUiTheme();return;}   // 폰 — 그 폰에만, 바로 (저장 단추와 무관)
+  cur.ui_theme=b.dataset.v;paintUiTheme();dirty();};
+function dirty(){say(isDirty()?"저장하지 않은 변경이 있습니다":"");}
+function isDirty(){const o=S.settings||{};const ks=new Set([...Object.keys(cur),...Object.keys(o)]);for(const k of ks)if(cur[k]!==o[k])return true;return false;}
+
+/* ── 갈래 = 탭 ──────────────────────────────────────────────────
+   길게 이어 놓고 스크롤하던 것을 한 번에 한 갈래만 보이게 바꿨다. 스크롤 위치로 알약을
+   맞추던 코드(scroll-spy)도 같이 걷어냈다 — 볼 것이 하나뿐이면 맞출 것도 없다. */
+function showSec(id){
+  const secs=[...document.querySelectorAll("#body section")];
+  const pick=secs.find((x)=>x.id===id&&!x.dataset.off)||secs.find((x)=>!x.dataset.off);
+  if(!pick)return;
+  for(const x of secs)x.hidden=(x!==pick);
+  for(const x of document.querySelectorAll(".nav"))x.classList.toggle("on",x.dataset.s===pick.id);
+  $("body").scrollTop=0;                            // 갈래를 바꾸면 위에서부터 본다
+  try{sessionStorage.setItem("mf.set.tab",pick.id);}catch(e){}   // 저장하고 돌아와도 보던 갈래로
+}
+for(const b of document.querySelectorAll(".nav"))b.onclick=()=>showSec(b.dataset.s);
+
+/* ── 불러오기·저장 ── */
+/* 악기 목록은 **설정 응답에 없다** — `/api/instruments`(미니 화면과 같은 길)에서 따로 받는다.
+   예전에는 `d.instruments` 를 읽었는데 설정 응답이 그 칸을 준 적이 없어 「기본 악기」가
+   늘 「그대로」 하나뿐이었다. 목록을 못 받아도 설정 화면은 그대로 뜬다. */
+/* **값이 채워지기 전엔 저장이 잠긴다** (작업 설정의 `#sMsg` 와 같은 말).
+   못 불러온 채 열어 두면 빈 칸·0 이 「불러온 값」처럼 보이고, 저장을 누르면 그 값이 실제로 저장됐다. */
+function lockSave(on,why){$("save").disabled=!!on;$("cancel").disabled=!!on;
+  if(on){for(const el of NUMS)el.querySelector("span").textContent="—";say(why||"값을 불러오는 중 — 채워지기 전엔 저장이 잠깁니다",why?"bad":"");}}
+async function load(){
+  lockSave(true);
+  const [d,ins]=await Promise.all([api("/api/settings?nocli=1"),api("/api/instruments").catch(()=>null)]);
+  if(!d||!d.settings){const why=(d&&(d.message||d.error))||"응답 없음";
+    toast("설정을 불러오지 못했습니다: "+why);lockSave(true,"설정을 불러오지 못했습니다 ("+why+") — 저장이 잠겨 있습니다");return;}
+  lockSave(false);
+  S={settings:d.settings,instruments:(ins&&Array.isArray(ins.items))?ins.items:[],cli:d.cli||null};
+  if(window.MWTheme)MWTheme.fromSettings(d.settings);   // 폰은 PC 값을 적어 둔다 (제 선택이 없으면 따른다)
+  cur=Object.assign({},d.settings);
+  paintAll();say("");
+  // `nocli=1` 이라 CLI 상태는 **안 온다** (null). 모르는 것을 「못 찾았다」로 적지 않는다.
+  const c=S.cli||{};
+  $("cliHint").textContent=!S.cli?"비우면 자동으로 찾습니다 · 연결 상태는 첫 화면 머리줄 점에 보입니다"
+    :!c.found?"실행파일을 아직 찾지 못했습니다 — 게임을 켜고 CLI 옵션을 켜 보세요"
+    :`${c.exe||""} · ${c.pipe==="connected"?"연결됨":"끊김"}`;
+  api("/api/health").then((h)=>{$("ver").textContent=h&&h.version?`v${h.version}`:"";}).catch(()=>{});
+  // 오버레이 창 상태는 **이 PC 에서만** 묻는다 — 밖에서 물으면 403 이고, net.js 가 그 403 을 「쪽지 만료」로 보고
+  // 불러올 때마다 다시 로그인했다
+  if(CAN.overlay)api("/api/overlay").then(ovRow).catch(()=>{});
+  if(!REMOTE)api("/api/covers").then(coverInfo).catch(()=>{});
+}
+
+/* ── 카드 커버 ── 폴더 경로를 보여 주고, 「폴더 열기」는 서버가 탐색기로 연다 (이 PC 안에서만) */
+function coverInfo(d){if(!d||!d.dir)return;
+  $("coverDir").textContent=d.dir+(d.own?` · 넣은 그림 ${d.own}장`:"");}
+/* 「내 이미지 관리」 = covers.html — 어느 곡이 어떤 내 이미지를 쓰는지 · 안 쓰는 것 지우기 */
+$("coverOpen").onclick=async()=>{const r=await api("/api/covers/open",{});
+  if(!r||r.ok===false){toast("폴더를 열지 못했습니다: "+((r&&(r.message||r.error))||""));return;}
+  coverInfo(r);if(r.opened===false)toast("폴더: "+r.dir,"ok");};
+// 밖에서 접속(remote_*)·업데이트(update_*) 값은 **보내지 않는다** — 그 갈래는 모비웍스 설정에 있다.
+// 여기서 되돌려 보내면 저쪽에서 고친 값을 이 화면이 불러 둔 옛 값으로 덮는다.
+const SAVE_KEYS=["gap_sec","advance_margin","stop_before_play","folio_dismount_by_craft","ensemble","opening","opening_theme",
+  "ov_scale","ov_alpha","auto_sync"];   // 연주 인사 값은 greet.html 이 따로 저장한다
+$("save").onclick=async()=>{
+  if(!S.settings)return;   // 못 불러온 채로는 저장하지 않는다
+  const body={default_inst:$("inst").value};
+  if(!REMOTE)body.cli_exe=$("cli").value.trim();   // 밖에서는 보내지 않는다 (감춘 칸의 빈 값이 이 PC 의 경로를 지우지 않게)
+  for(const k of SAVE_KEYS){
+    if(k==="folio_dismount_by_craft"&&!CAN.dismount)continue;   // 감춘 줄(날개 5) — 밖에서는 보내지 않는다 (서버도 `ignored` 로 버린다)
+    body[k]=cur[k];}
+  if(!REMOTE&&UI_THEMES.includes(cur.ui_theme))body.ui_theme=cur.ui_theme;   // 테마 — 이 PC 에서만 (폰의 선택은 그 폰에만)
+  $("save").disabled=true;
+  try{
+    const r=await api("/api/settings",{settings:body});
+    if(!r||r.ok===false){say("저장하지 못했습니다: "+((r&&(r.message||r.error))||""),"bad");return;}
+    S.settings=r.settings||Object.assign({},S.settings,body);cur=Object.assign({},S.settings);
+    paintAll();say("저장했습니다","ok");
+  }finally{$("save").disabled=false;}};
+/* ── 연출 테마 미리 보기 ── 고른 테마를 **그 값 하나만** 저장하고(연출 창은 저장된 설정을 읽는다) 견본 곡으로 한 번 띄운다.
+   길은 손으로 부르는 시험용 `POST /api/opening` (서버 engine.py — 이 PC 안에서만, REMOTE_NEVER). 서버의 문을 그대로 지나므로
+   연출을 꺼 두었거나(「연주 시작 연출」) 지금 울리는 연주에 이미 카드가 나갔으면 건너뛴다 — 그 까닭을 그대로 알린다. */
+const PREVIEW={players:[["","나"],["달빛 음유시인","루엔"],["","하랑"]],inst:"[피아노] 미리 보기",preview:true};   // preview:true — 곡이 울리는 중이어도 한 번 띄운다
+// 견본 곡 = 악보함의 첫 곡 (그 곡의 커버로 나온다). 악보함이 비었으면 이름만 — 커버 자리는 회색
+async function previewSong(){try{const j=await api("/api/scores");const it=(j&&Array.isArray(j.items))?j.items[0]:null;
+  const t=it?String(it.song||it.cleaned||it.title||"").trim():"";return t||"미리 보기";}catch(e){return "미리 보기";}}
+$("opPreview").onclick=async()=>{
+  const b=$("opPreview"),want=OP_THEMES.includes(cur.opening_theme)?cur.opening_theme:"card";
+  b.disabled=true;
+  try{
+    if((S.settings||{}).opening_theme!==want){
+      const r=await api("/api/settings",{settings:{opening_theme:want}});
+      if(!r||r.ok===false){toast("테마를 저장하지 못했습니다: "+((r&&(r.message||r.error))||""));return;}
+      S.settings=Object.assign({},S.settings,{opening_theme:(r.settings&&r.settings.opening_theme)||want});
+      cur.opening_theme=S.settings.opening_theme;dirty();
+    }
+    const r=await api("/api/opening",Object.assign({song:await previewSong()},PREVIEW));
+    if(!r||r.ok===false){toast("미리 보기를 띄우지 못했습니다: "+((r&&(r.message||r.error))||""));return;}
+    if(r.skipped){toast(r.reason==="off"?"「연주 시작 연출」이 꺼져 있어 띄우지 않았습니다":"지금 울리는 연주에 이미 연출이 나가서 건너뛰었습니다");return;}
+    toast("게임 화면 위에 연출을 띄웠습니다","ok");
+  }finally{b.disabled=false;}};
+$("cancel").onclick=()=>{if(!S.settings)return;cur=Object.assign({},S.settings);paintAll();say("되돌렸습니다");};
+$("back").onclick=()=>{location.href="/folio/";};
+
+/* ── 오버레이 ── */
+function ovRow(st){const has=st&&st.available;$("ovRow").hidden=!has;if(!has)return;
+  $("ovShow").textContent=st.visible?"오버레이 끄기":"오버레이 켜기";
+  $("ovThru").classList.toggle("gold",!!st.clickThrough);}
+$("ovShow").onclick=async()=>{const st=await api("/api/overlay");ovRow(await api("/api/overlay",{on:!(st&&st.visible)}));};
+$("ovThru").onclick=async()=>{const st=await api("/api/overlay");ovRow(await api("/api/overlay",{through:!(st&&st.clickThrough)}));};
+$("ovReset").onclick=async()=>{ovRow(await api("/api/overlay",{reset:true}));toast("오버레이 위치를 되돌렸습니다","ok");};
+
+document.addEventListener("keydown",(e)=>{
+  if(e.key==="Escape"){e.preventDefault();location.href="/folio/";}
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="s"){e.preventDefault();$("save").click();}});
+hideLocalOnly();
+let firstTab="s-play";
+try{firstTab=sessionStorage.getItem("mf.set.tab")||firstTab;}catch(e){}
+showSec(firstTab);
+load();
+</script>
+<script src="/js/shell.js"></script>
+</body>
+</html>

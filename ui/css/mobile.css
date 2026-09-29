@@ -1,0 +1,105 @@
+/* mobile.css — **좁은 폭의 모습** (390×844 기준).
+ *
+ * 화면 코드는 **한 벌**이다 — 폰 화면을 따로 두 벌 두면 반드시 갈라진다. 그래서 같은 마크업·같은 JS 에 이 파일 하나를 덮는다.
+ * 이 파일은 **맨 마지막에 실린다** (index.html) — 위의 규칙들을 덮어야 한다.
+ *
+ * 좁은 폭에서 바뀌는 것:
+ *   칸반 4열 → 세그먼트 칩 (한 번에 한 칸)
+ *   시작 확인 팝업 → 바텀시트
+ *   시설 표 → 카드 + 세로 칸 목록 · 「전체 수령」 배너 고정
+ *   재고 6열 → 4칸
+ *   사전 표 한 행 → 카드 한 장
+ *   담기 서랍 → 전체 화면 시트
+ *   설정 → 페이지 탭 줄의 다섯 번째 (넓은 폭에서도 탭이다)
+ *   전부  헤더 아래 5등분 페이지 탭 줄 (하단 탭바를 이 줄로 대체) · 터치 표적 44px
+ */
+
+/* ── 폰에서 손가락이 하는 일 ──────────────────────────────────────────────
+   꾹 누를 때 글자가 잡히지 않게, 그리고 목록은 세로로만 끌리게.
+   끌어서 고르는 기능이 폰에서 **스크롤을 가로챈다**. */
+@media (pointer: coarse) {
+  body { -webkit-touch-callout: none; }
+  .bcol-b, .gin-b, #tabBody, #works, .setbody, .plist, .cf-list { touch-action: pan-y; }
+  input, textarea { -webkit-user-select: text; user-select: text; }
+  /* 터치 표적은 **touch.css** 가 맡는다 — 보이는 모양은 PC 그대로, 누르는 자리만 보이지 않게 40px.
+     여기 있던 `button{min-height:40px}` 는 단추 **모양**을 늘려 원형 단추가 타원이 되고 한 줄 높이가 갈렸다.
+     두 앱이 같은 규칙을 쓰도록 폴리오 화면과 같은 파일로 옮겼다. */
+}
+
+/* ── 페이지 탭 줄 ──────────────────────────
+   헤더 바로 아래, #runbar 위 (index.html). **탭 줄은 이 하나뿐이다** — 화면 맨 아래 탭바는 없앴다.
+   grid repeat(5,1fr) · 높이 30 · 아래 1px #16202c(→ --line) · 바탕 #0b1018(→ --inset)
+         칸: 11px · 비활성 #6f7a8a(→ --sub2) 400 · 활성 #f4e7c8(→ --gold2) 700 + 골드 밑줄 inset 0 -2px 0 #e2b866(→ --gold)
+         수: 이름 옆 gap 3 · Mono 9px · #e2b866(→ --gold) */
+#mtabs {
+  display: none;                       /* 좁은 폭에서만 grid (아래 @media) */
+  flex: none;
+  grid-template-columns: repeat(4, 1fr);   /* 설정은 머리줄 ⚙ 로 옮겨 5등분에서 4등분 */
+  height: 30px;
+  border-bottom: 1px solid var(--line);
+  background: var(--inset);
+  z-index: 20;
+}
+#mtabs button {
+  display: flex; align-items: center; justify-content: center; gap: 3px;
+  min-width: 0; height: 30px; padding: 0; border: 0; border-radius: 0; background: transparent;
+  color: var(--sub2); font-size: var(--fs-xs); font-weight: 400; line-height: 1; white-space: nowrap;
+  box-shadow: none;
+}
+#mtabs button.on { color: var(--gold2); font-weight: 700; box-shadow: inset 0 -2px 0 var(--gold); }
+#mtabs button .tcnt { font-family: var(--mono); font-style: normal; font-size: 9px; font-weight: 400; color: var(--gold); }
+
+/* ── 큐 보드의 좁은 폭 규칙은 **board.css 에 있다** ──
+   전에 여기 있던 세그먼트 칩(`#bsegs .seg`·`#bsegs button`) 규칙은 보드 배치가 바뀌면서 쓸 곳이 없어졌는데
+   그대로 남아 있었다. 이 파일이 맨 뒤에 실리니 `#bsegs button`(특정도 1,0,1) 이 작업 중 슬롯 안의
+   `.stepper>button`·`.bcard .del` 을 덮어 회차 −/+ 와 × 에 테두리·8px 12px 여백이 붙었다.
+   **`#bsegs` 를 여기서 다시 잡지 않는다** — tests/test_q3_screen_qa.py 가 본다. */
+
+/* ── 좁은 폭 ─────────────────────────────────────────────────────────────
+   600px 아래를 「폰 배치」로 본다. 기준은 390px 이고, 그보다 넓은 폰·좁은 창까지 덮는다.
+
+   **화면마다의 좁은 폭 규칙은 그 화면의 css 파일에 있다** (board.css · works.css ·
+   tab-dict.css · settings.css 안의 `@media (width < 600px)`). 여기에는 **머리줄·페이지 탭·
+   대화상자처럼 화면을 가로지르는 것**만 둔다. 한 파일에 다 모아 두면 여러 사람이 같은 파일을
+   동시에 고치다 서로 덮는다 — 실제로 담기 시트 규칙이 여기서 진 적이 있다. */
+@media (width < 600px) {
+  header .tabs { display: none; }            /* 헤더 안 탭은 숨기고, 아래 페이지 탭 줄이 그 역할을 한다 */
+  header { padding: 8px 12px; gap: 6px; }
+  header .brand { margin-right: 6px; }
+  h1 { font-size: 15px; }
+  /* 머리줄 단추는 **폭으로 숨기지 않는다** — 창 폭에 따라 단추가 생겼다 없어졌다 하면 안 된다.
+     전에는 여기서 테마 단추(#themeBtn)를 숨겨 470 에서는 ↻·오버레이·⚙, 넓히면 ☀ 가 더 나왔다.
+     폰에서 오버레이 단추가 없는 것은 폭이 아니라 **할 수 있는 일**(NET.CAN.overlay)이 정한다 — settings.js paintOvBtn. */
+  #mtabs { display: grid; }                  /* 헤더 바로 아래 4등분 (설정은 머리줄로 옮김) */
+
+  /* 재고·사전·설정 — 바깥 여백을 줄인다 (가공은 works.css 가 0 으로 둔다) */
+  #tabStock, #tabDict, #tabOverlay, #tabSettings { padding: 8px 12px; }
+
+  /* 팝업 → 바텀시트 */
+  dialog {
+    max-width: 100vw; width: 100vw; max-height: 92dvh;
+    margin: auto auto 0; border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  dialog::backdrop { background: var(--backdrop); }
+  /* 담기 시트의 크기·모서리는 **drawer.css 가 정한다** (위 14px 를 비우고 radius 16).
+     여기서 100dvh·radius 0 으로 덮으면 이 파일이 뒤에 실리니 drawer.css 쪽이 매번 진다. */
+  .dlg-h { padding: 12px 14px; }
+  .dlg-b { padding: 10px 14px; }
+  .dlg-f { padding: 10px 14px; flex-wrap: wrap; }
+}
+
+/* 아주 좁은 폰 (360px 이하) */
+/* ── 제일 좁은 화면 ──
+   **아이폰 미니 계열의 가로폭(375px)이 우리가 받쳐 주는 최소다**.
+   그보다 좁으면 보장하지 않는다 — 대신 375 에서는 **가로 스크롤이 생기면 안 된다.**
+   `tests/test_mobile.py` 가 고정 폭이 그 아래로 들어오는지 본다. */
+@media (max-width: 380px) {
+  h1 { font-size: 14px; }
+}
+
+/* ── 설치한 앱(PWA)으로 열렸을 때 ──
+   주소창이 없으므로 위쪽 안전 영역을 직접 비켜 준다. */
+@media (display-mode: standalone) {
+  header { padding-top: calc(8px + env(safe-area-inset-top, 0px)); }
+}

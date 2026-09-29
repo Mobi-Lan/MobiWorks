@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>모비폴리오 · 내 커버 관리</title>
+<!-- 내 커버 관리 — 이력이 많아지면 관리가 어려우므로 폴더 구조로 두고, 사용 중인 내 이미지를 보는 페이지와
+     그 파일이 저장되는 폴더를 바로 여는 단추를 둔다.
+     모양은 폴리오 설정 화면(settings.html)의 뼈대를 그대로 쓴다: 머리(돌아가기 ·
+     제목) → 갈래 띠(밑줄 탭) → 행 → 발. 공통 뼈대는 folio-settings.css, 색은 settings.html 과 같은 값·같은 차례.
+     들어오는 길: 설정 → 연출 → 「카드 커버」 줄의 「내 이미지 관리」 (`?from=settings`) · 커버 고르기 시트 바닥의
+     「내 이미지 관리 ›」. -->
+<link rel="stylesheet" href="/css/folio-settings.css">
+<style>
+:root{
+  --bg:#0b1018; --bar:#0d1420; --inset:#111a26; --strip:#131c27;
+  --line:#26303d; --line2:#1b2634; --line3:#16202c; --rowline:#131c27; --ctl:#23303f; --dash:#2b3a4b;
+  --gold:#e2b866; --gold-hi:#f0d08a; --on-gold:#1a1608; --gold-dim:#a8833f;
+  --title:#f4e7c8; --row:#dce3ea; --row-sub:#8b97a6; --mono:#9aa3b2; --ink:#e9ecf1;
+  --ctl-ink:#c9d0da; --chip:#c2cad4; --faint:#6f7a8a; --faint2:#5c6878; --faint3:#4b5665;
+  --ok:#7fe0bd; --ok-line:rgba(95,199,164,.35);
+  --track:#1e2a38; --gold-fill:rgba(226,184,102,.12); --gold-line:rgba(226,184,102,.45);
+  --pink:#ff6f9c;
+  color-scheme:dark;
+}
+/* 머리 오른쪽의 「폴더 열기」 — 제목 뒤로 밀어 붙인다 */
+#hd .grow{flex:1}
+#hd .btn{height:28px}
+/* 폴더 줄 — 갈래(탭)와 무관하게 늘 보인다 (설정 화면의 면책 줄처럼 section 밖) */
+#folders .path{font-size:11px;color:var(--mono);word-break:break-all}
+/* 썸네일 칸 — 커버 고르기 시트의 칸과 같은 카드 비율(1 : 1.42) */
+.tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px;padding:10px 14px 4px}
+.t{display:flex;flex-direction:column;border:1px solid var(--ctl);border-radius:9px;overflow:hidden;background:var(--inset);min-width:0}
+.t .img{position:relative;aspect-ratio:1/1.42;background:var(--strip)}
+.t .img img{width:100%;height:100%;object-fit:cover;display:block}
+.t .img .n{position:absolute;right:5px;top:5px;padding:1px 7px;border-radius:9px;background:var(--gold);color:var(--on-gold);
+  font-size:10px;font-weight:700;line-height:16px}
+.t .meta{display:flex;flex-direction:column;gap:2px;padding:7px 8px 4px;min-width:0}
+.t .nm{font-size:12px;color:var(--row);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t .sz{font-size:10.5px;color:var(--faint);font-family:Consolas,"D2Coding",monospace}
+.t .act{display:flex;gap:5px;padding:4px 8px 8px;flex-wrap:wrap}
+.t .act .btn{height:24px;padding:0 9px;font-size:11px}
+.t .act .btn.del:hover{border-color:var(--badline);color:var(--pink)}
+.t .act .btn.yes{border-color:var(--badline);background:var(--badbg);color:var(--pink)}
+.t .ask{padding:0 8px 2px;font-size:11px;color:var(--pink);line-height:1.4;word-break:keep-all}
+/* 「어느 곡」 — 펼치면 곡 줄 (#0012 제목 · 번호대로) */
+.t .songs{border-top:1px solid var(--line3);padding:4px 0;max-height:150px;overflow:auto}
+.t .songs .s{display:flex;align-items:center;gap:6px;padding:3px 8px;font-size:11px;color:var(--row-sub);min-width:0}
+.t .songs .s .id{font-family:Consolas,"D2Coding",monospace;color:var(--gold-dim);flex-shrink:0}
+.t .songs .s .ti{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--row)}
+.t .songs .s .btn{height:20px;padding:0 7px;font-size:10px;flex-shrink:0}
+/* 온라인에서 받은 그림 — 출처 줄 (개인 감상용 · 출처 표시) */
+.t .img .on{position:absolute;left:5px;top:5px;padding:1px 7px;border-radius:9px;background:rgba(0,0,0,.62);color:#fff;
+  font-size:10px;font-weight:700;line-height:16px}
+.t .src{font-size:10.5px;color:var(--row-sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t .src a{color:var(--gold);text-decoration:none}
+.t .src a:hover{text-decoration:underline}
+.empty{padding:14px;font-size:11.5px;color:var(--faint2);line-height:1.6;word-break:keep-all}
+.sub{padding:12px 14px 0;font-size:10px;letter-spacing:.14em;color:var(--faint)}
+#refresh{margin-left:auto}
+</style>
+<link rel="stylesheet" href="/css/tokens.css">
+<link rel="stylesheet" href="/css/folio-bridge.css">
+<link rel="stylesheet" href="/css/shell.css">
+<!-- 손가락 기기 규칙 — 작업 화면과 **같은 파일** (css/touch.css) · 맨 마지막 -->
+<link rel="stylesheet" href="/css/touch.css">
+<!-- 테마 (설정 ui_theme — 두 앱 공통). 이 PC 는 서버가 <html data-theme> 을 박아 내고, 폰은 이 파일이 머리에서 입힌다 -->
+<script src="/js/theme.js"></script>
+</head>
+<body>
+<div id="hd">
+  <button id="back">← 돌아가기</button>
+  <b>내 커버 관리</b><span class="grow"></span>
+  <button class="btn gold" id="openRoot" data-w="root">폴더 열기</button>
+</div>
+<div id="navrow">
+  <button class="nav on" data-s="s-used">사용 중 <span id="nUsed"></span></button>
+  <button class="nav" data-s="s-free">안 쓰는 이미지 <span id="nFree"></span></button>
+  <button class="nav" data-s="s-num">번호 파일 <span id="nNum"></span></button>
+  <button class="nav" data-s="s-def">기본 커버</button>
+</div>
+
+<div id="body">
+  <!-- 폴더 — 어느 탭을 보든 늘 보인다. 경로는 서버가 준 것만 적는다 (이 PC 안에서만 보이는 화면이다) -->
+  <div class="r col" id="folders"><span class="lb"><b>커버 폴더</b>
+    <i>바로 아래에는 번호 이름 파일(0012.png)만 · <b>mine</b> = 내 이미지(올린 그림) · <b>default</b> = 내 기본 풀</i>
+    <i class="path" id="folderPath">—</i></span>
+    <div class="btns"><button class="btn" id="openMine" data-w="mine">내 이미지 폴더 (mine)</button>
+      <button class="btn" id="openDef" data-w="default">내 기본 풀 폴더 (default)</button></div></div>
+
+  <section id="s-used">
+    <h2>사용 중</h2>
+    <div class="note">곡마다 고른 내 이미지입니다. 쓰는 곡이 있는 그림은 지우지 않습니다 — 「어느 곡」에서 그 곡을 「번호대로」로 되돌리면 지울 수 있습니다.
+      「온라인」 표시가 붙은 그림은 커버 고르기의 「온라인에서 찾기」로 받은 앨범 그림입니다 — 개인 감상용이고, 출처를 함께 적으며, 백업·공유에 넣지 않습니다.</div>
+    <div id="used"></div>
+  </section>
+  <section id="s-free">
+    <h2>안 쓰는 이미지</h2>
+    <div class="note">mine 폴더에 있지만 어느 곡도 고르지 않은 그림입니다.</div>
+    <div id="free"></div>
+  </section>
+  <section id="s-num">
+    <h2>번호 파일</h2>
+    <div class="note">커버 폴더 바로 아래의 번호 이름 파일 — 그 번호 곡에 저절로 붙습니다 (곡마다 고른 커버가 있으면 그것이 먼저). 바꾸거나 빼려면 폴더에서 합니다.</div>
+    <div id="num"></div>
+  </section>
+  <section id="s-def">
+    <h2>기본 커버</h2>
+    <div class="note">곡마다 고른 것도 번호 파일도 없는 곡이 「번호대로」 받는 커버입니다. 내 기본 풀(default 폴더)에 그림이 있으면 거기서 번호로 정해진 한 장을,
+      비었으면 <b>곡마다 새로 그린 커버</b>(생성 커버)를 씁니다. 여기서는 보기만 합니다.</div>
+    <div class="sub">생성 커버 — 번호대로 그린 것 <span id="nGen"></span></div>
+    <div class="note">앱이 곡마다 그리는 커버입니다. 무늬(저녁놀·밤하늘·악보 종이·사선 띠·숲·잉크)와 색은 곡 번호로 정해지고, 그 위에 곡 제목과 아티스트를 씁니다.
+      같은 곡은 늘 같은 그림이고, 제목·아티스트가 바뀌면 다시 그립니다. 앨범 그림을 가져오지 않으므로 저작권 걱정이 없습니다.</div>
+    <div id="gdef"></div>
+    <div class="sub">내 기본 풀 (default)</div><div id="udef"></div>
+    <div class="sub">앱 기본 — 커버 고르기에서 고를 수 있는 여섯 장</div><div id="bdef"></div>
+  </section>
+</div>
+
+<div id="ft"><span id="msg"></span><button class="btn" id="refresh">새로 고침</button></div>
+<div id="toast"></div>
+
+<script src="/folio/net.js"></script>
+<script>
+const TOKEN=MF.TOKEN,REMOTE=MF.REMOTE,CAN=MF.CAN,api=MF.api;
+const $=(id)=>document.getElementById(id);
+// 바깥 링크는 **https:// 로 시작하는 것만** href 에 넣는다 — esc 는 javascript: 를 못 막는다 (보안)
+const safeLink=(u)=>/^https:\/\/[^\s"'<>\\]+$/.test(String(u||""))?String(u):"";
+const esc=(s)=>String(s??"").replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));   // ' 도 — 따옴표 종류를 가리지 않게 (보안)
+let toastT=0;
+function toast(m,kind){const t=$("toast");t.textContent=m;t.className=(kind||"")+" show";
+  clearTimeout(toastT);toastT=setTimeout(()=>{t.className="";},3200);}
+function say(m,kind){$("msg").textContent=m||"";$("msg").className=kind||"";}
+const songTag=(id)=>Number(id)>0?"#"+String(Number(id)).padStart(4,"0"):"";
+function fmtSize(n){n=Number(n)||0;return n>=1048576?(n/1048576).toFixed(1)+"MB":n>=1024?Math.round(n/1024)+"KB":n+"B";}
+
+/* 설정 화면과 같은 구조 — 이 창이 살아 있다고 서버에 계속 알린다 (미니판은 창이 닫히면 스스로 꺼진다) */
+(async function hold(){if(!CAN.hold)return;
+  for(;;){try{
+  const r=await fetch("/api/hold",{headers:{"X-Requested-With":"mobiworks","X-MobiWorks-Token":TOKEN},cache:"no-store"});
+  const rd=r.body.getReader();while(!(await rd.read()).done){}
+}catch{}await new Promise((res)=>setTimeout(res,1000));}})();
+
+/* ── 갈래 = 탭 (설정 화면과 같은 방식) ── */
+function showSec(id){
+  const secs=[...document.querySelectorAll("#body section")];
+  const pick=secs.find((x)=>x.id===id)||secs[0];
+  for(const x of secs)x.hidden=(x!==pick);
+  for(const x of document.querySelectorAll(".nav"))x.classList.toggle("on",x.dataset.s===pick.id);
+  $("body").scrollTop=0;
+  try{sessionStorage.setItem("mf.covers.tab",pick.id);}catch(e){}
+}
+for(const b of document.querySelectorAll(".nav"))b.onclick=()=>showSec(b.dataset.s);
+
+/* ── 칸 그리기 ── 한 칸 = 썸네일 · 이름 · 크기 · (쓰는 곡 수) · 「어느 곡」 · 「삭제」 */
+let D=null;              // 마지막으로 받은 목록 (GET /api/covers)
+const OPEN=new Set();    // 「어느 곡」을 펼친 그림 이름
+let ASK="";              // 「지울까요?」를 묻는 중인 그림 이름 (앱 안에서 묻는다 — 브라우저 기본 창을 쓰지 않는다)
+function songsHtml(c){
+  return `<div class="songs">${(c.usedBy||[]).map((s)=>`<div class="s"><span class="id">${esc(songTag(s.id))}</span><span class="ti" title="${esc(s.title)}">${esc(s.title)}</span>`
+    +`<button class="btn" data-clear="${Number(s.id)}">번호대로</button></div>`).join("")}</div>`;}
+// 온라인에서 받은 그림의 출처 줄 — 「출처 · Apple Music (iTunes) ↗」 (원래 페이지가 있으면 링크)
+function srcHtml(c){const s=c.src;if(!s)return"";
+  const name=esc(s.sourceName||s.source),link=safeLink(s.link);
+  return `<span class="src">출처 · ${link?`<a href="${esc(link)}" target="_blank" rel="noopener noreferrer">${name} ↗</a>`:name}</span>`;}
+function mineCellHtml(c){
+  const n=(c.usedBy||[]).length,open=OPEN.has(c.name),ask=ASK===c.name;
+  return `<div class="t" data-name="${esc(c.name)}"><div class="img"><img src="${esc(c.url)}" alt="" loading="lazy" decoding="async">${c.src?'<span class="on">온라인</span>':""}${n?`<span class="n">${n}곡</span>`:""}</div>`
+    +`<div class="meta"><span class="nm" title="${esc(c.name)}">${esc(c.name)}</span><span class="sz">${esc(fmtSize(c.size))}</span>${srcHtml(c)}</div>`
+    +(ask?`<div class="ask">이 그림을 지울까요? 되돌릴 수 없습니다.</div><div class="act"><button class="btn yes" data-do="yes">지우기</button><button class="btn" data-do="no">취소</button></div>`
+        :`<div class="act">${n?`<button class="btn" data-do="songs">어느 곡 ${open?"▴":"▾"}</button>`:""}<button class="btn del" data-do="del">삭제</button></div>`)
+    +(n&&open?songsHtml(c):"")+`</div>`;}
+function viewCellHtml(c,line){
+  return `<div class="t"><div class="img"><img src="${esc(c.url)}" alt="" loading="lazy" decoding="async"></div>`
+    +`<div class="meta"><span class="nm" title="${esc(c.name)}">${esc(c.name)}</span><span class="sz">${esc(line||fmtSize(c.size))}</span></div></div>`;}
+// 번호 파일 칸 — 아래 줄에 `#0012 제목 · 크기` · 앱 기본 칸 — 고른 곡 수
+function numCellHtml(c){return viewCellHtml(c,`${songTag(c.id)}${c.title?" "+c.title:""} · ${fmtSize(c.size)}`);}
+function defCellHtml(c){const n=(c.usedBy||[]).length;return viewCellHtml(c,n?`${fmtSize(c.size)} · ${n}곡이 고름`:fmtSize(c.size));}
+function gridHtml(cells,empty){return cells.length?`<div class="tgrid">${cells.join("")}</div>`:`<div class="empty">${empty}</div>`;}
+function render(){
+  if(!D)return;
+  const used=(D.mine||[]).filter((c)=>(c.usedBy||[]).length),free=(D.mine||[]).filter((c)=>!(c.usedBy||[]).length);
+  $("nUsed").textContent=used.length;$("nFree").textContent=free.length;$("nNum").textContent=(D.numbered||[]).length;
+  $("used").innerHTML=gridHtml(used.map(mineCellHtml),"곡마다 고른 내 이미지가 없습니다. 미니 창 목록의 줄을 오른쪽 클릭 → 「커버 고르기…」에서 고릅니다.");
+  $("free").innerHTML=gridHtml(free.map(mineCellHtml),"안 쓰는 내 이미지가 없습니다.");
+  $("num").innerHTML=gridHtml((D.numbered||[]).map(numCellHtml),
+    "번호 이름 파일이 없습니다. 커버 폴더 바로 아래에 0012.png 처럼 곡 번호로 이름을 붙여 넣으면 그 곡에 붙습니다.");
+  $("nGen").textContent=D.generatedCount?`· ${D.generatedCount}곡`:"";
+  $("gdef").innerHTML=gridHtml((D.generated||[]).map((g)=>viewCellHtml({name:songTag(g.id)+" "+g.title,url:g.url},g.family+(g.artist?" · "+g.artist:""))),
+    (D.userDefaults||[]).length?"내 기본 풀에 그림이 있어 생성 커버를 쓰는 곡이 없습니다.":"생성 커버를 쓰는 곡이 없습니다 — 모든 곡에 고른 그림이나 번호 파일이 있습니다.");
+  $("udef").innerHTML=gridHtml((D.userDefaults||[]).map((c)=>viewCellHtml(c)),"비어 있습니다 — 생성 커버를 씁니다.");
+  $("bdef").innerHTML=gridHtml((D.defaults||[]).map(defCellHtml),"—");
+  $("folderPath").textContent=D.folder||"—";
+  say(`내 이미지 ${(D.mine||[]).length}장 · 쓰는 것 ${used.length} · 안 쓰는 것 ${free.length}`);
+}
+async function load(){
+  const d=await api("/api/covers");
+  if(!d||d.ok===false){say("목록을 받지 못했습니다: "+((d&&(d.message||d.error))||""),"bad");return;}
+  D=d;render();}
+
+/* 칸 안의 단추 — 목록을 새로 그려도 잃지 않게 바깥에서 한 번만 받는다 */
+$("body").addEventListener("click",async(e)=>{
+  const b=e.target.closest("button");if(!b)return;
+  if(b.dataset.clear){                                   // 그 곡의 커버를 「번호대로」로 되돌린다
+    b.disabled=true;
+    const r=await api("/api/songs",{op:"cover",id:Number(b.dataset.clear),cover:""});
+    if(!r||r.ok===false){toast("되돌리지 못했습니다: "+((r&&(r.message||r.error))||""));b.disabled=false;return;}
+    toast(`${songTag(b.dataset.clear)} 커버를 번호대로 되돌렸습니다`,"ok");await load();return;}
+  const cell=b.closest(".t[data-name]");if(!cell||!b.dataset.do)return;
+  const name=cell.dataset.name,c=((D&&D.mine)||[]).find((x)=>x.name===name);if(!c)return;
+  if(b.dataset.do==="songs"){OPEN.has(name)?OPEN.delete(name):OPEN.add(name);render();return;}
+  if(b.dataset.do==="del"){
+    if((c.usedBy||[]).length){OPEN.add(name);render();
+      toast(`${c.usedBy.length}곡이 쓰는 그림이라 지우지 않습니다 — 먼저 「번호대로」로 되돌리세요`);return;}
+    ASK=name;render();return;}
+  if(b.dataset.do==="no"){ASK="";render();return;}
+  if(b.dataset.do==="yes"){
+    b.disabled=true;
+    const r=await api("/api/covers",{op:"delete",name});
+    ASK="";
+    if(!r||r.ok===false){toast("지우지 못했습니다: "+((r&&(r.message||r.error))||""));await load();return;}
+    D=r;render();toast(`「${name}」 을 지웠습니다`,"ok");}
+});
+
+/* 폴더 열기 — 서버가 탐색기로 연다 (이 PC 안에서만). 개발·검사 서버는 창을 띄우지 않고 경로만 돌려준다 */
+for(const id of ["openRoot","openMine","openDef"])$(id).onclick=async()=>{
+  const r=await api("/api/covers",{op:"open",which:$(id).dataset.w});
+  if(!r||r.ok===false){toast("폴더를 열지 못했습니다: "+((r&&(r.message||r.error))||""));return;}
+  if(r.opened===false)toast("폴더: "+r.dir,"ok");};
+$("refresh").onclick=()=>load();
+
+const FROM=new URLSearchParams(location.search).get("from");
+function goBack(){location.href=FROM==="settings"?"/folio/settings.html":"/folio/";}
+$("back").onclick=goBack;
+document.addEventListener("keydown",(e)=>{if(e.key==="Escape"){e.preventDefault();if(ASK){ASK="";render();return;}goBack();}});
+
+if(REMOTE){   // 커버 폴더 = 이 PC 의 폴더 — 밖에서는 서버도 막는다 (REMOTE_NEVER). 빈 화면 대신 까닭을 적는다
+  document.querySelectorAll("#hd .btn,#folders").forEach((el)=>{el.hidden=true;});
+  say("내 커버 관리는 이 PC 에서만 됩니다.","bad");
+}else{
+  let first="s-used";
+  try{first=sessionStorage.getItem("mf.covers.tab")||first;}catch(e){}
+  showSec(first);
+  load();
+}
+</script>
+<script src="/js/shell.js"></script>
+</body>
+</html>

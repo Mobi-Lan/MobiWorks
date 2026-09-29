@@ -1,0 +1,145 @@
+/* settings.css — 설정 **탭**(.set-nav/.set-body/.set-ft · 행 .set-r · 스위치 .set-sw · 숫자 .set-num) ·
+   설정 행(.srow/.ssec — 이제 오버레이 탭(overlay-tab.js)이 쓴다) · 시작 확인창(#qConfirm) */
+/* 설정은 팝업이 아니라 탭이다. 짜임은 **모비폴리오 설정
+   (ui/folio/settings.html)의 방식**을 따른다:
+     머리 → 갈래 밑줄 탭 → 몸(한 갈래만, 안에서 스크롤) → 발(상태 · 되돌리기 · 저장).
+   머리·탭·발은 고정하고 몸만 스크롤한다 — 긴 설명이 아래로 흘러도 「저장」이 손에 닿아 있어야 한다.
+   색은 전부 tokens.css 토큰이다 (폴리오 쪽 이름은 안 쓴다 — 여기서는 작업 토큰 이름을 직접 쓴다). */
+#tabSettings{padding:12px 16px;min-height:0}
+#setCard{flex:1 1 auto;display:flex;flex-direction:column;min-height:0}
+
+/* 갈래 띠 — 폴리오와 같은 **밑줄 탭**: 땅을 균등하게 나누고, 고른 것만 금색 굵은 글씨에 아래 2px 금줄.
+   좌우로 넘치면 밀어서 본다 (좁은 폭). */
+.set-nav{flex:none;display:flex;background:var(--panel);border-bottom:1px solid var(--line2);overflow-x:auto;scrollbar-width:none}
+.set-nav::-webkit-scrollbar{display:none}
+.set-nav button{flex:1 0 auto;min-width:0;height:34px;padding:0 10px;background:none;border:0;border-radius:0;border-bottom:2px solid transparent;color:var(--sub);font-size:var(--fs-sm);line-height:1;white-space:nowrap;cursor:pointer}
+.set-nav button:hover{color:var(--fg2)}
+.set-nav button.on{color:var(--gold);font-weight:700;border-bottom-color:var(--gold)}
+
+/* 몸 — 한 갈래만 보이고 안에서 스크롤 */
+.set-body{flex:1 1 auto;min-height:0;overflow:auto;padding:0 0 12px;touch-action:pan-y}
+/* 탭이 이미 갈래 이름을 말해 준다 — 갈래 안 제목은 같은 말을 두 번 하는 것이라 감춘다 (읽기 프로그램에는 남는다) */
+.set-sec>h2{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);margin:0}
+
+/* 행 — 왼쪽 이름표(이름 + 설명), 오른쪽 조작 하나. .col 이면 조작이 아래 줄로 내려가 폭을 다 쓴다 (글 칸·단추 묶음) */
+.set-r{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 16px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)}
+.set-r .lb{display:flex;flex-direction:column;gap:2px;min-width:0}
+.set-r .lb b{font-size:var(--fs-body);font-weight:400;color:var(--fg)}
+.set-r .lb i{font-style:normal;font-size:var(--fs-xs);color:var(--sub);line-height:1.45;word-break:keep-all}
+.set-r .lb i b{color:var(--strong);font-weight:600;font-size:inherit}
+.set-r.col{grid-template-columns:minmax(0,1fr)}
+.set-r.col>.seg{justify-self:start}   /* 한 칸 격자에서 세그먼트가 폭을 다 먹지 않게 */
+.set-r input[type=text]{width:100%;min-width:0;padding:8px 10px;border-radius:8px;background:var(--inset);border:1px solid var(--line2);color:var(--fg);outline:none;font:inherit}
+.set-r input[type=text]:focus{border-color:var(--goldline)}
+.set-btns{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.set-note{padding:9px 14px 0;font-size:var(--fs-xs);color:var(--sub2);line-height:1.5;word-break:keep-all}
+.set-note b{color:var(--fg2)}
+
+/* ── 백업·복원 ── 내려받기는 링크지만 단추처럼 보인다 (button.small 과 같은 치수) */
+.set-link{display:inline-flex;align-items:center;padding:6px 12px;border-radius:8px;border:1px solid var(--line2);background:var(--card);color:var(--fg2);font-size:var(--fs-body);text-decoration:none;white-space:nowrap}
+.set-link:hover{border-color:var(--goldline);color:var(--gold)}
+.set-file{flex:1 1 auto;min-width:0;font-size:var(--fs-xs);color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 복원 결과 상자 — 적용한 파일 · 무시한 키 · 보관 파일 이름 */
+.set-out{margin-top:8px;padding:9px 11px;border-radius:8px;border:1px solid var(--line2);background:var(--inset);font-size:var(--fs-xs);color:var(--fg2);line-height:1.6;word-break:break-all;white-space:pre-line}
+.set-out.ok{border-color:var(--goldline);background:var(--goldbg);color:var(--strong)}
+.set-out.bad{border-color:var(--warnline);background:var(--warnbg2)}
+
+/* 켜기 스위치 — 진짜 체크박스를 안에 품는다. remote.js 가 `.checked`·onchange 로 읽으니 input 은 그대로 둔다. */
+.set-sw{position:relative;display:flex;align-items:center;width:38px;height:22px;border-radius:11px;background:var(--soft);border:1px solid var(--line2);padding:0 3px;flex-shrink:0;cursor:pointer;transition:background .12s}
+.set-sw input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.set-sw i{width:16px;height:16px;border-radius:50%;background:var(--sub2);display:block;transition:transform .12s;pointer-events:none}
+.set-sw:has(input:checked){background:var(--gold);border-color:var(--goldline)}
+.set-sw input:checked+i{background:var(--ongold);transform:translateX(16px)}
+.set-sw:has(input:focus-visible){outline:2px solid var(--goldline);outline-offset:2px}
+
+/* 숫자 조절 — − 값 + (단위) */
+.set-num{display:inline-flex;align-items:center;border:1px solid var(--line2);border-radius:7px;overflow:hidden;font-size:var(--fs-sm);flex-shrink:0;background:var(--card)}
+.set-num button{padding:5px 10px;border:0;border-radius:0;background:transparent;color:var(--sub);font-family:var(--mono);font-size:14px;line-height:1;cursor:pointer}
+.set-num button:hover{color:var(--gold);background:var(--goldbg)}
+.set-num input{width:56px;padding:5px 4px;text-align:center;border:0;border-left:1px solid var(--line2);border-right:1px solid var(--line2);border-radius:0;background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:var(--fs-sm);outline:none;-moz-appearance:textfield}
+.set-num input::-webkit-outer-spin-button,.set-num input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.set-num input:focus{box-shadow:inset 0 0 0 1px var(--gold)}
+.set-num em{font-style:normal;padding:0 8px 0 6px;color:var(--sub2);font-size:var(--fs-xs)}
+
+/* 발 — 상태 한 줄 · 되돌리기 · 저장 */
+.set-ft{flex:none;display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--panel);border-top:1px solid var(--line2)}
+.set-msg{flex:1;font-size:var(--fs-xs);color:var(--sub2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.set-msg.ok{color:var(--ok)}
+.set-msg.bad{color:var(--bad)}
+
+/* 설정 행 (.srow/.ssec) — **오버레이 탭이 쓴다** (overlay-tab.js 가 innerHTML 로 그린다). 설정 탭은 이제 .set-r 을 쓴다 */
+.srow{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+.srow .t{font-size:13px}.srow .d{font-size:12px;color:var(--sub)}
+.ssec{padding:8px 0 2px;font-size:11px;color:var(--gold);letter-spacing:.08em}
+/* 시작 확인창 */
+#qConfirm{max-height:760px}
+.cf-sum{padding:14px 20px;border-bottom:1px solid var(--line2);background:var(--bg);display:flex;flex-direction:column;gap:10px}
+.cf-box{border:2px solid var(--gold3);border-radius:12px;padding:12px 16px;background:linear-gradient(180deg,var(--hover),var(--card));box-shadow:inset 0 0 0 1px var(--bg),inset 0 0 0 2px var(--goldline);display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:center;gap:12px}
+.cf-box .c{display:flex;flex-direction:column;align-items:center;gap:2px}
+.cf-box .e{font-size:11px;letter-spacing:.1em;color:var(--gold3)}
+.cf-box .n{font-family:var(--mono);font-size:26px;font-weight:600;color:var(--gold2);line-height:1}
+.cf-box .n small{font-size:14px;color:var(--gold3)}
+.cf-box .s{font-size:11px;color:var(--sub)}
+.cf-box .vl{width:1px;height:36px;background:var(--goldline)}
+.cf-line{display:flex;justify-content:space-between;font-size:12px;color:var(--sub);flex-wrap:wrap;gap:6px}
+.cf-line b{font-family:var(--mono);color:var(--fg);font-weight:400}
+.cf-list{padding:10px 20px;display:flex;flex-direction:column;gap:6px;overflow:auto;max-height:300px}
+.cf-i{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px}
+.cf-i .i{font-family:var(--mono);font-size:11px;color:var(--sub2)}
+.cf-i .tx{display:flex;flex-direction:column;gap:1px}
+.cf-i .cmd{font-size:11px;color:var(--sub2);font-family:var(--mono)}
+.cf-i .rt{display:flex;flex-direction:column;align-items:flex-end;gap:1px}
+.cf-i .calls{font-family:var(--mono);font-size:12px;color:var(--fg2)}.cf-i .cost{font-size:11px;color:var(--gold)}
+/* 알려진 방해 (계란의 수닭 등) — 막지 않고 알린다. 경고색이되 오류처럼 빨갛지는 않게 */
+.cf-hz{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;border-radius:8px;
+  background:color-mix(in srgb, var(--warn) 10%, transparent);
+  border:1px solid color-mix(in srgb, var(--warn) 38%, transparent);
+  font-size:12px;color:var(--fg2);line-height:1.55;margin-top:2px}
+.cf-hz .hz-t{flex:none;font-size:11px;font-weight:700;color:var(--warn);letter-spacing:.04em;padding-top:1px}
+.cf-hz b{color:var(--strong);font-weight:600}
+.cf-hz .hz-s{color:var(--sub)}
+
+.cf-rules{display:flex;flex-direction:column;gap:5px;padding:10px 12px;background:var(--bg);border:1px solid var(--line2);border-radius:8px;font-size:12px;color:var(--fg2);margin-top:4px}
+.cf-rules .e{font-size:11px;color:var(--sub);letter-spacing:.08em}
+
+/* ── 밖에서 접속 (폰) ── */
+.set-risk{margin:10px 14px 0;padding:10px 12px;border-radius:8px;font-size:var(--fs-xs);line-height:1.6;color:var(--fg2);word-break:keep-all;
+  background:var(--warnbg2);border:1px solid var(--warnline)}
+.set-risk b{color:var(--strong)}
+.set-risk ul{margin:6px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:3px}
+/* 인증키·연결 코드 상자 — 안의 .v/.h 는 remote.js 가 그린다 */
+.rmkey{padding:10px 12px;border:1px solid var(--goldline);border-radius:8px;background:var(--goldbg);
+  display:flex;flex-direction:column;gap:5px;font-size:var(--fs-xs);color:var(--fg2)}
+.rmkey .v{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--gold2);letter-spacing:.12em;word-break:break-all}
+.rmkey .h{color:var(--sub)}
+/* 안내 세 줄 — 어디로 가서 무엇을 넣는지 (갈래 맨 위) */
+.rmguide{list-style:none;margin:10px 14px 0;padding:10px 12px;border:1px solid var(--goldline);border-radius:8px;background:var(--goldbg);
+  display:flex;flex-direction:column;gap:4px;font-size:var(--fs-xs);line-height:1.55;color:var(--fg2);word-break:keep-all}
+.rmguide b{color:var(--strong)}
+.rmguide .rmsite{color:var(--gold2);font-family:var(--mono)}
+/* 직접 정하기 — 칸 하나 + 단추 하나 */
+.rmmine{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.rmmine-l{font-size:var(--fs-xs);color:var(--sub)}
+.rmmine input{flex:1 1 150px;min-width:0;max-width:280px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.rmmine input::placeholder{text-transform:none;letter-spacing:0}
+/* 연결 코드 + QR — 넓으면 옆에, 좁으면 아래로 */
+.rmlink{display:flex;align-items:center;gap:12px 16px;flex-wrap:wrap}
+.rmlink-t{display:flex;flex-direction:column;gap:5px;flex:1 1 180px;min-width:0}
+.rmqr{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--sub)}
+.rmqr svg{display:block;width:132px;height:132px;border-radius:6px}   /* 흰 바탕은 그림 안의 <rect> 가 깐다 — 여기서 색을 적지 않는다 */
+#sRmScope button{padding:5px 11px}
+#sUpdRow{border-bottom:0;padding-top:0}
+#sUpdRow:has(> [hidden]){display:none}
+
+/* ── 좁은 폭 (mobile.css 에서 옮겨 옴 — 설정 화면의 규칙은 여기서 산다) ──
+   행은 좁아도 **한 줄**이다: 이름표가 minmax(0,1fr) 로 줄고 조작은 auto 로 제 폭을 지킨다.
+   .col 행만 조작이 아래 줄로 내려간다 (글 칸·단추 묶음). 갈래 띠는 넘치면 옆으로 민다. */
+@media (width < 600px) {
+  .set-ft { padding-left: 10px; padding-right: 10px; }
+  .set-r { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 10px; padding: 10px 12px; }
+  .set-r.col { grid-template-columns: minmax(0, 1fr); }
+  .set-risk { margin-left: 12px; margin-right: 12px; }
+  .set-note { padding-left: 12px; padding-right: 12px; }
+  .rmguide { margin-left: 12px; margin-right: 12px; }
+  .set-nav button { flex: 1 0 auto; padding: 0 12px; }
+}

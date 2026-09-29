@@ -1,0 +1,122 @@
+/* base.css — 리셋·본문·버튼·배지·칩·스테퍼·dialog·토스트·표 등 공통 컴포넌트 */
+*{box-sizing:border-box}
+[hidden]{display:none!important}   /* #updBar 등 display 를 지정한 요소도 hidden 속성이 이기게 */
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+.mono{font-family:var(--mono)}
+.badge{font-size:var(--fs-xs);padding:3px 8px;border-radius:5px;background:var(--soft);color:var(--sub);font-weight:600;white-space:nowrap}
+.badge.ok{background:var(--okbg);color:var(--ok)}.badge.bad{background:var(--badbg);color:var(--bad2)}.badge.warn{background:var(--warnbg);color:var(--warn)}
+.badge.gold{background:var(--goldbg);color:var(--gold)}.badge.line{background:transparent;border:1px solid var(--line2);color:var(--fg2);font-weight:400}
+.badge.run{background:var(--runbg);color:var(--run)}.badge.gather{background:var(--gatherbg);color:var(--gather)}.badge.collect{background:var(--collectbg);color:var(--collect)}
+.badge.notify{background:var(--runbg);color:var(--blue);box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--blue) 45%, transparent)}   /* 알림 카드 — 종·파랑. 제작(run)과는 테두리로 가른다 */
+.conn{display:inline-flex;align-items:center;gap:7px;font-size:var(--fs-sm);color:var(--sub)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--sub2);flex:none;display:inline-block}
+.dot.on{background:var(--ok);box-shadow:0 0 6px var(--ok)}.dot.off{background:var(--bad)}.dot.warn{background:var(--warn)}
+.dot.blink{background:var(--run);width:6px;height:6px;animation:blink 1.2s infinite}
+button{font:inherit;border:1px solid var(--line2);background:transparent;color:var(--fg2);border-radius:7px;padding:6px 12px;cursor:pointer;font-size:var(--fs-body);white-space:nowrap}
+button:hover{border-color:var(--line3)}
+button.pri{background:var(--gold);border-color:var(--gold);color:var(--ongold);font-weight:600}
+/* 되돌릴 수 없는 확인 — **금색이 아니다.** 금색은 「하던 일을 잇는다」는 뜻으로 온 화면에 쓰이는데,
+   지우기까지 같은 색이면 손이 먼저 간다. 지우는 것만 분홍으로 세운다. */
+button.pri.danger{background:var(--bad);border-color:var(--bad);color:var(--onpink)}
+button.pri.danger:hover{background:var(--bad2);border-color:var(--bad2)}
+button.pri:hover{background:var(--goldhover);border-color:var(--goldhover)}
+button.outline{border-color:var(--gold);color:var(--gold2);font-weight:600}
+button.small{padding:6px 12px;font-size:var(--fs-body)}
+button.xs{padding:4px 9px;font-size:var(--fs-xs);font-weight:600;border-radius:6px}
+button.stopb{background:var(--bad);border-color:var(--bad);color:var(--onpink);font-weight:600}
+button:disabled{cursor:default;color:var(--sub2);border-color:var(--line)}
+button.pri:disabled{background:var(--goldDim);border-color:var(--goldDim);color:var(--goldDimFg)}
+button.stopb:disabled{background:transparent;border-color:var(--line);color:var(--sub2)}
+#btnSync small{font-size:var(--fs-xs);font-weight:400;color:var(--sub2)}
+.card.flash{animation:flash 1.2s ease-out 2}
+@keyframes flash{0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--gold) 70%, transparent)}100%{box-shadow:0 0 0 12px color-mix(in srgb, var(--gold) 0%, transparent)}}
+.ch{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.ct{font-weight:600;font-size:var(--fs-card)}
+.cb{padding:8px 14px 12px}
+.cfoot{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--line2);background:var(--inset)}
+.cfoot #qFootTxt{white-space:normal;text-align:right;line-height:1.35}
+.lbl{font-size:var(--fs-sm);color:var(--sub);white-space:nowrap}
+.muted{color:var(--sub)}.small-t{font-size:var(--fs-sm)}
+.pline{display:flex;align-items:center;gap:8px;padding:9px 14px;background:var(--badbg2);border-bottom:1px solid var(--badline);font-size:12px;color:var(--bad2);flex-wrap:wrap}
+.oline{display:flex;align-items:center;gap:8px;padding:9px 14px;background:var(--warnbg2);border-bottom:1px solid var(--warnline);font-size:12px;color:var(--warnfg);flex-wrap:wrap}
+.oline .d{color:var(--gold)}
+.code{font-family:var(--mono);font-size:var(--fs-xs);padding:2px 7px;border-radius:4px;background:var(--badline);color:var(--bad2);font-weight:600}
+.appchk{font-size:var(--fs-eyebrow);padding:1px 6px;border-radius:4px;border:1px solid var(--line3);color:var(--sub)}
+.seg{display:inline-flex;background:var(--bg);border:1px solid var(--line2);border-radius:6px;overflow:hidden;font-size:var(--fs-sm)}
+.seg button{border:none;border-radius:0;padding:4px 10px;color:var(--sub);font-size:var(--fs-sm)}
+.seg button.on{background:var(--gold);color:var(--ongold);font-weight:600}
+/* 공통 스테퍼 .stepper — 큐 인라인·채집 탭·사전 폼·계획 팝업·「전체 반복」·설정 창 전부 이 하나 (제각각이면 글리프가 처지고 높이가 달라진다)
+   28 | 44 | 28 px, 높이 30. 버튼 글리프(U+2212 −, U+002B +)는 line-height:1 로 정확히 가운데. 가운데는 input 이든 span 이든 같은 모양 */
+.stepper{display:inline-grid;grid-template-columns:26px 44px 26px;height:26px;border:1px solid var(--line2);border-radius:6px;overflow:hidden;vertical-align:middle;background:var(--card)}
+.stepper>button{display:grid;place-items:center;padding:0;margin:0;border:none;border-radius:0;line-height:1;font-size:14px;font-family:var(--mono);color:var(--sub);background:transparent;height:100%;width:100%;cursor:pointer}
+.stepper>button:hover{background:var(--soft);color:var(--fg)}.stepper>button:active{color:var(--gold)}.stepper>button:disabled{opacity:.35;cursor:default;background:transparent}
+.stepper>*:nth-child(2){display:grid;place-items:center;text-align:center;border:0;border-left:1px solid var(--line2);border-right:1px solid var(--line2);background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:var(--fs-sm);padding:0 2px;margin:0;min-width:0;width:100%;height:100%;-moz-appearance:textfield;border-radius:0}
+.stepper>input::-webkit-outer-spin-button,.stepper>input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.stepper>input:focus{outline:none;box-shadow:inset 0 0 0 1px var(--gold)}
+/* 대화상자 */
+dialog{border:1px solid var(--line3);border-radius:14px;background:var(--card);color:var(--fg);padding:0;max-width:560px;width:92vw;box-shadow:0 30px 80px var(--shadow)}
+dialog::backdrop{background:var(--backdrop);backdrop-filter:blur(3px)}
+.dlg-h{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--line);font-size:16px;font-weight:700;color:var(--gold2)}
+.dlg-h .x{color:var(--sub2);cursor:pointer;font-weight:400;font-size:16px}
+.dlg-b{padding:16px 20px;display:grid;gap:12px}
+.dlg-f{display:flex;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid var(--line);background:var(--inset)}
+/* 물어보는 창 (#ask) — 브라우저 기본 창 대신 */
+#ask{max-width:min(420px,calc(100vw - 24px))}
+/* 좁은 폭에서도 #ask 는 **가운데 뜬 카드**다. mobile.css 의 「팝업 → 바텀시트」(dialog{margin:auto auto 0})를
+   그대로 받으면 창 바닥에 붙어 밑의 시트·설정의 발 버튼(저장 · 되돌리기)을 덮고, 375 에서 왼쪽 끝이 창 끝에 붙었다.
+   묻는 창은 무엇을 묻는지(밑 화면의 발)가 보여야 하므로: 양옆 12px 이상 · 세로 가운데 · 아래로 60px 이상 비운다.
+   #id 규칙이라 mobile.css 의 dialog 규칙보다 늘 이긴다 — 순서에 기대지 않는다. */
+@media (width < 600px){#ask{width:calc(100% - 24px);max-width:420px;margin:auto;border-radius:14px;max-height:calc(100dvh - 120px);padding-bottom:0}}
+#ask .ask-msg{font-size:var(--fs-body);color:var(--fg2);line-height:1.65;white-space:pre-line;word-break:keep-all}
+#ask .ask-msg b{color:var(--gold2)}
+#ask .ask-in{display:flex;flex-direction:column;gap:6px}
+#ask .ask-in span{font-size:var(--fs-sm);color:var(--sub)}
+#ask .ask-in input{width:100%}
+#ask .dlg-f .lbl{font-size:var(--fs-xs);color:var(--sub2);min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* 창이 길면 본문만 스크롤하고 제목·발은 제자리에 둔다 — 그러지 않으면 창 전체가 스크롤돼
+   발의 「저장·닫기」가 보이는 영역 밖으로 밀린다(설정 창에서 실제로 닫기 버튼이 화면 밖에 있었다). */
+dialog[open]{display:flex;flex-direction:column;max-height:calc(100vh - 32px)}
+dialog .dlg-h,dialog .dlg-f{flex:none}
+dialog .dlg-b{overflow:auto;min-height:0;flex:1}
+label{display:grid;gap:4px}
+label span{font-size:12px;color:var(--sub)}
+input[type=text],input[type=number],input[type=search]{font:inherit;padding:7px 9px;border:1px solid var(--line2);border-radius:7px;background:var(--bg);color:var(--fg);width:100%}
+input[type=number]{width:90px;font-family:var(--mono);font-size:var(--fs-body);text-align:right}
+input:focus{outline:none;border-color:var(--line3)}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.updbox{display:flex;align-items:center;gap:8px;padding:9px 11px;border:1px solid var(--line2);border-radius:8px;font-size:var(--fs-body)}
+.updbox.ok{border-color:var(--ok)}.updbox.bad{border-color:var(--bad)}.updbox.new{border-color:var(--gold)}
+.updtxt{flex:1}
+/* 토스트 (우하단) — **발 바 위 · 레일 오른쪽**에 뜬다.
+   바닥 24px 에 두었더니 popover 는
+   top layer 라 무엇이든 덮어서, 담기 시트의 「닫고 보드로」·보드의 「＋ 작업 추가」·레일의 「우선」을 가렸다.
+   · 아래: 가장 높은 발 바(좁은 폭 담기 시트 57px = 10+36+10+1)보다 위 — 72px
+   · 왼쪽: 레일 38px + 8px 을 넘지 않는다 — 폭 상한이 `100vw - 46px - 오른쪽 16px` */
+#toast,#etoast{inset:auto;margin:0;overflow:visible}#toast:popover-open{display:block}#etoast:popover-open{display:grid}   /* popover UA 기본(inset:0, margin:auto) 덮기 */
+*::-webkit-scrollbar{width:10px;height:10px}*::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:5px;border:2px solid transparent;background-clip:padding-box}*::-webkit-scrollbar-track{background:transparent}
+#toast{position:fixed;right:16px;bottom:72px;background:var(--card);color:var(--fg2);padding:10px 14px;border-radius:10px;font-size:13px;z-index:20;border:1px solid var(--line3);box-shadow:0 12px 40px var(--shadow);max-width:min(380px,calc(100vw - 62px))}
+/* 아이폰 미니(375px)가 우리 **최소 폭**이다 — 380px 을 못 박으면 그 화면에서
+   오른쪽이 잘려 닫기 버튼이 밖으로 나간다. 화면보다 작게 잡는다. */
+#etoast{position:fixed;right:16px;bottom:72px;width:min(380px,calc(100vw - 62px));display:grid;grid-template-columns:4px 1fr auto;gap:12px;padding:12px 14px;background:color-mix(in srgb, var(--pink) 14%, var(--card));border:1px solid var(--badline);border-radius:10px;box-shadow:0 12px 40px var(--shadow);z-index:21;cursor:pointer;font-size:12px}
+#etoast .bar{background:var(--bad);border-radius:2px}
+#etoast .x{color:var(--sub2)}
+/* 알림 토스트 (알림 카드·큐 종료). 오류 토스트와 같은 자리·같은 짜임, 색만 파랑. 10초 뒤 또는 누르면 닫힌다 */
+#ntoast{inset:auto;margin:0;overflow:visible;position:fixed;left:16px;right:16px;bottom:72px;width:auto;display:grid;grid-template-columns:4px 1fr auto;gap:12px;padding:12px 14px;background:color-mix(in srgb, var(--blue) 14%, var(--card));border:1px solid color-mix(in srgb, var(--blue) 40%, transparent);border-radius:10px;box-shadow:0 12px 40px var(--shadow);z-index:21;cursor:pointer;font-size:12px}
+#ntoast:popover-open{display:grid}
+#ntoast .bar{background:var(--blue);border-radius:2px}
+#ntoast .body{display:flex;flex-direction:column;gap:3px;min-width:0}
+#ntoast .body b{color:var(--blue)}
+#ntoast .body span{color:var(--fg);word-break:break-word}
+#ntoast .body .tm{color:var(--sub2);font-family:var(--mono);font-size:11px}
+#ntoast .x{color:var(--sub2)}
+.chip{font-size:var(--fs-xs);padding:1px 6px;border-radius:6px;background:var(--badbg);color:var(--bad2)}
+.chip.ok{background:var(--okbg);color:var(--ok)}
+table{border-collapse:collapse;width:100%;font-size:var(--fs-body)}
+th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line)}
+th{color:var(--sub);font-weight:600;font-size:var(--fs-sm)}
+td.n{text-align:right;font-family:var(--mono);font-size:var(--fs-sm)}
+.bar{height:6px;background:var(--soft);border-radius:3px;overflow:hidden;margin-top:4px}
+.bar i{display:block;height:100%;background:var(--gold)}
+.bar.warn i{background:var(--bad)}
+.empty{padding:30px;text-align:center;color:var(--sub)}
+a{color:var(--gold)}a:hover{color:var(--goldhover)}

@@ -1,0 +1,133 @@
+/* folio-settings.css — 폴리오 **설정꼴 화면의 공통 뼈대** (settings.html · greet.html 이 같이 싣는다)
+   ───────────────────────────────────────────────────────────────────────
+   연주 인사 탭도 설정 창과 같은 모양이다. 같은 모양을 두 파일에 두 벌 두면
+   한쪽만 고쳐져 다시 어긋난다 — 그래서 settings.html 의 `<style>` 에서 **공통 규칙만** 여기로
+   빼냈다. 값은 하나도 안 바꿨다 (설정 화면이 곧 사양이다).
+
+   짜임: 머리(#hd: 돌아가기 · 제목 · 버전) → 갈래 띠(#navrow: 밑줄 탭, 한 번에 한 갈래)
+         → 몸(#body: 스크롤, section 마다 행 .r) → 발(#ft: 상태 한 줄 · 되돌리기 · 저장).
+   행 .r = grid `1fr auto` — 왼쪽 .lb(굵은 이름 <b> + 설명 <i>), 오른쪽 조작 하나
+   (.sw 38×22 알약 스위치 · .num「− 값 +」· select.sel). 글 칸·단추 묶음은 .r.col 로 한 줄 전체.
+
+   싣는 차례: 이 파일 → 그쪽 `<style>` → tokens.css → folio-bridge.css → shell.css.
+   여기서는 색 이름만 쓴다 (`var(--…)`). 값은 tokens.css 가 주고 folio-bridge.css 가 잇는다. */
+*{box-sizing:border-box}
+/* **감춘 것은 정말 감춘다**. 행(.r)의 display grid · 단추 묶음(.btns)의 display flex 가 UA 의 hidden 규칙을
+   이겨, 밖(폰)에서 감추려던 「카드 커버 · 폴더 열기」·「모비웍스 설정 열기」가 그대로 보였다 (index.html 은 이미 같은 줄이 있다). */
+[hidden]{display:none!important}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font-family:"Malgun Gothic","맑은 고딕",system-ui,sans-serif;font-size:13px;
+  display:flex;flex-direction:column;overflow:hidden}
+.mono{font-family:Consolas,"D2Coding",monospace}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;padding:0}
+input,select,textarea{font:inherit}
+
+/* 스크롤 막대 — 기본 모양은 밝아서 어두운 화면에 도드라진다.
+   첫 화면의 목록과 같은 모양으로 맞춘다. */
+*{scrollbar-width:thin;scrollbar-color:var(--scroll) transparent}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:6px;
+  border:3px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:var(--line3);background-clip:content-box}
+
+/* 머리 */
+#hd{flex-shrink:0;display:flex;align-items:center;gap:9px;height:44px;padding:0 12px;background:var(--bar);
+  border-bottom:1px solid var(--line3)}
+#hd b{font-size:14px;color:var(--title)}
+#back{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:8px;
+  border:1px solid var(--ctl);color:var(--ctl-ink);font-size:12px}
+#back:hover{border-color:var(--gold-line);color:var(--gold)}
+#ver{font-size:11px;color:var(--faint2)}
+
+/* 갈래 띠 — 오버레이의 탭과 같은 모양이다.
+   금색 알약이 아니라 **밑줄 탭**: 땅바닥을 균등하게 나누고, 고른 것만 금색 굵은 글씨에
+   아래 2px 금줄을 깔아 둔다. 좌우로 넘치면 밀어서 본다 (좁은 폭에서도 줄바꿈하지 않는다). */
+#navrow{flex-shrink:0;display:flex;background:var(--bar);
+  border-top:1px solid var(--line3);border-bottom:1px solid var(--line3);
+  overflow-x:auto;scrollbar-width:none}
+#navrow::-webkit-scrollbar{display:none}
+.nav{flex:1 0 auto;min-width:0;height:34px;padding:0 10px;background:none;border:0;
+  border-bottom:2px solid transparent;color:var(--row-sub);font-size:12px;line-height:1;
+  white-space:nowrap;cursor:pointer}
+.nav:hover{color:var(--chip)}
+.nav.on{color:var(--gold);font-weight:700;border-bottom-color:var(--gold)}
+/* 탭이 이미 갈래 이름을 금색으로 말해 준다 — 아래 제목은 같은 말을 두 번 하는 것이라 지운다. */
+#body section > h2:first-child{display:none}
+
+/* 몸 */
+#body{flex:1;overflow:auto;padding:0 0 14px;display:flex;flex-direction:column}
+section{scroll-margin-top:8px}
+h2{margin:0;padding:14px 14px 8px;font-size:10px;letter-spacing:.16em;color:var(--faint);font-weight:400;
+  border-top:1px solid var(--line3)}
+section:first-child h2{border-top:0}
+/* 행 — 좁은 폭(375)에서도 **한 줄**(이름표 | 조작)이다. 두 줄로 갈라지면 스위치가 어느 행 것인지 안 보인다. */
+.r{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:10px 14px;
+  border-bottom:1px solid var(--rowline)}
+.r .lb{display:flex;flex-direction:column;gap:2px;min-width:0}
+.r .lb b{font-size:13px;font-weight:400;color:var(--ink)}
+.r .lb i{font-style:normal;font-size:11px;color:var(--row-sub);line-height:1.45;word-break:keep-all}
+/* 설명(11px) 안의 강조 <b> 는 **설명 크기를 따른다.** 위의 `.r .lb b`(13px 이름표)가 안쪽 <b> 까지
+   잡아 11px 글 사이에 13px 글자가 끼었다. 모비웍스 설정의 `.set-r .lb i b` 와 같은 규칙. */
+.r .lb i b{font-size:inherit;font-weight:600;color:var(--chip)}
+.r.hi{background:var(--gold-fill);border-bottom:1px solid var(--ctl)}
+.r.hi .lb b{font-weight:600}
+.r.col{grid-template-columns:1fr;gap:7px}
+.r input[type=text]{width:100%;padding:8px 10px;border-radius:8px;background:var(--inset);
+  border:1px solid var(--ctl);color:var(--ink);outline:none}
+.r input[type=text]:focus{border-color:var(--gold-line)}
+select{padding:6px 8px;border-radius:7px;background:var(--inset);border:1px solid var(--ctl);color:var(--ink);outline:none}
+/* 행 오른쪽 칸(auto)은 조작의 **가장 긴 선택지** 폭을 따른다 — 「기본 악기」에 「[피아노] 3화음 고결한 서약의
+   피아노」 같은 이름이 들어오자 select 가 행을 다 먹어 이름표가 한 글자씩 세로로 꺾였다 (375 실측).
+   폭에 상한을 두고 넘치는 이름은 말줄임으로 둔다. */
+.r > select{max-width:min(180px,46vw);min-width:0;text-overflow:ellipsis}
+
+/* 켜기 스위치 */
+.sw{width:38px;height:22px;border-radius:11px;background:var(--track);border:1px solid var(--ctl);
+  display:flex;align-items:center;justify-content:flex-start;padding:0 3px;flex-shrink:0;transition:background .12s}
+.sw i{width:16px;height:16px;border-radius:50%;background:var(--faint2);display:block;transition:transform .12s}
+.sw.on{background:var(--gold);border-color:var(--gold-line)}
+.sw.on i{background:var(--on-gold);transform:translateX(16px)}
+
+/* 숫자 조절 */
+.num{display:inline-flex;align-items:center;border:1px solid var(--ctl);border-radius:7px;overflow:hidden;
+  font-size:12px;flex-shrink:0}
+.num button{padding:5px 10px;color:var(--row-sub)}
+.num button:hover{color:var(--gold);background:var(--gold-fill)}
+.num span{padding:5px 10px;min-width:62px;text-align:center;color:var(--ink);
+  border-left:1px solid var(--ctl);border-right:1px solid var(--ctl)}
+
+.btn{height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--ctl);color:var(--ctl-ink);font-size:12px;
+  white-space:nowrap}
+.btn:hover{border-color:var(--gold-line);color:var(--gold)}
+.btn.pri{background:var(--gold);color:var(--on-gold);border-color:var(--gold);font-weight:700}
+.btn.pri:hover{background:var(--gold-hi);color:var(--on-gold)}
+.btn.gold{border-color:var(--gold-line);background:var(--gold-fill);color:var(--gold)}
+.btns{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+/* 책임 고지 — 안내문과 섞이면 안 읽힌다. 테두리를 둘러 따로 세운다. */
+.risk{margin:10px 14px 0;padding:10px 12px;border:1px solid var(--pink);border-radius:8px;
+  background:var(--badbg2);color:var(--pink);font-size:11.5px;line-height:1.6;word-break:keep-all}
+.risk b{color:var(--pink)}
+.sel{display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:7px;background:var(--inset);
+  border:1px solid var(--ctl);color:var(--ctl-ink);font-size:12px;outline:none;appearance:none;cursor:pointer}
+.note{padding:9px 14px 0;font-size:11px;color:var(--faint2);line-height:1.5;word-break:keep-all}
+
+/* 글 칸 — 여러 줄(인사말) */
+textarea{width:100%;min-height:54px;resize:vertical;padding:8px 10px;border-radius:8px;background:var(--inset);
+  border:1px solid var(--ctl);color:var(--ink);font:inherit;outline:none;line-height:1.5}
+textarea:focus{border-color:var(--gold-line)}
+.tok{height:20px;padding:0 8px;border-radius:10px;border:1px dashed var(--dash);color:var(--row-sub);
+  font-family:Consolas,"D2Coding",monospace;font-size:10px}
+.tok:hover{border-color:var(--gold-line);color:var(--gold)}
+
+/* 발 */
+#ft{flex-shrink:0;display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bar);
+  border-top:1px solid var(--line3)}
+#msg{flex:1;font-size:11px;color:var(--faint2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#msg.ok{color:var(--ok)}
+#msg.bad{color:var(--pink)}
+#toast{position:fixed;left:50%;bottom:64px;transform:translateX(-50%);z-index:9;padding:9px 14px;border-radius:12px;
+  background:var(--badbg);border:1px solid var(--badline);font-size:12.5px;max-width:92%;
+  box-shadow:0 8px 24px var(--shadow);display:none}
+#toast.ok{background:var(--goldbg);border-color:var(--gold-line)}
+#toast.show{display:block}

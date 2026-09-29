@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.cmd text eol=crlf
+# CSP 인라인 스크립트 해시는 LF 기준으로 계산된다 — CRLF 로 체크아웃되면 UI 스크립트가 통째로 차단된다
+ui/index.html text eol=lf

@@ -1,0 +1,1622 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>모비폴리오</title>
+<!-- 홈 화면에 올려 앱처럼 쓰기 위한 것들. PC 에서는 아무 일도 하지 않는다. -->
+<link rel="manifest" href="/folio/manifest.webmanifest">
+<link rel="icon" href="/folio/icon-256.png">
+<link rel="apple-touch-icon" href="/folio/icon-256.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MobiFolio">
+<meta name="theme-color" content="#0b1018">
+<style>
+/* 「MobiFolio Mini」 — 아이콘 격자를 밀도 높은 목록으로, 플레이어는 접었다 펴는 시트로.
+   디자인 캔버스는 534x1142 이고 실제 창은 440x920 이라, px 값은 디자인 그대로 두고 줄 수만 줄어든다(약 14줄).
+   글꼴은 디자인이 IBM Plex 를 쓰지만 보안 정책(font-src 'self')상 웹폰트를 못 받아 기존 묶음을 쓴다. */
+:root{
+  --bg:#0b1018; --bar:#0d1420; --inset:#111a26; --strip:#131c27;
+  --line:#26303d; --line2:#1b2634; --line3:#16202c; --rowline:#131c27; --ctl:#23303f; --dash:#2b3a4b;
+  --gold:#e2b866; --gold-hi:#f0d08a; --on-gold:#1a1608; --gold-dim:#a8833f; --gold-badge:#8a6f3a; --gold-badge-line:#3d3218;
+  --title:#f4e7c8; --row:#dce3ea; --row-sub:#8b97a6; --mono:#9aa3b2; --ink:#e9ecf1;
+  --ctl-ink:#c9d0da; --chip:#c2cad4; --faint:#6f7a8a; --faint2:#5c6878; --faint3:#4b5665; --bartext:#8f98a6;
+  --ok:#7fe0bd; --ok-dot:#5fc7a4; --ok-line:rgba(95,199,164,.35);
+  --track:#1e2a38; --play-bg:rgba(226,184,102,.07); --gold-fill:rgba(226,184,102,.12); --gold-line:rgba(226,184,102,.45);
+  --pink:#ff6f9c;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font:13px/1.35 "Pretendard","Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif;color:var(--ink);
+  background:var(--bg);overflow:hidden;user-select:none;-webkit-user-select:none;
+  /* 손가락으로 조금만 오래 눌러도 글자가 잡히고 확대 메뉴가 떴다.
+     고르기는 **글을 넣는 칸에서만** 되게 한다. */
+  -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+input,textarea,.mono.sel{user-select:text;-webkit-user-select:text;-webkit-touch-callout:default}
+/* 목록은 세로로만 끌리게 — 줄을 고르려고 옆으로 끌 때 화면이 같이 밀리지 않게 */
+#list,#filters,#squeue,#snear{touch-action:pan-y}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;padding:0}
+[hidden]{display:none!important}
+.mono{font-family:ui-monospace,Consolas,"Courier New",monospace}
+#app{height:100%;display:flex;flex-direction:column}
+
+/* ── 머리 ── */
+/* 「미니 창 · 폴리오 닫힘」 — 머리는 **44px 한 줄**(로고 버튼 · 이름 · 점 · 네모 버튼 넷)이고,
+   검색·필터는 그 아래 따로 묶인 칸(#finder)이다. 색은 전부 토큰 이름 — 값은 tokens.css·folio-bridge.css 가 준다.
+   디자인의 가는 선(#16202c·#131c27)은 `--line`/`--rowline` 이다 (`--line3` 은 tokens.css 가 밝은 선으로 덮는다). */
+#hdr{flex-shrink:0;display:flex;flex-direction:column}
+#brandrow{display:flex;align-items:center;gap:7px;height:44px;padding:0 10px;flex-shrink:0;
+  border-bottom:1px solid var(--line);background:var(--bar)}
+#brandrow b{font-size:13px;font-weight:700;color:var(--title);white-space:nowrap}
+/* 로고 버튼(♪▶)은 shell.js 가 이 줄 맨 앞에 넣는다 — 여기서는 디자인 높이(24px)와 간격만 맞춘다 */
+#brandrow #railBtn{height:24px;margin-right:0}
+#finder{display:flex;flex-direction:column;gap:8px;padding:9px 10px;border-bottom:1px solid var(--line)}
+/* 연결 표시는 **점 하나**다.
+   좁은 화면에서 「연결됨」 넉 자가 머리줄을 밀어내 로고가 세로로 접혔다.
+   글자는 지우지 않고 화면에서만 감춘다 — 읽는 기계에는 그대로 들린다. */
+#conn{display:flex;align-items:center;gap:5px;color:var(--ok)}
+.a11y-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+#conn.off{color:var(--pink);border-color:var(--badline)}
+#conn i{width:7px;height:7px;border-radius:50%;background:var(--ok-dot);display:block;flex-shrink:0}   /* 테 없는 7px 점 */
+#conn.off i{background:var(--pink)}
+#tools{margin-left:auto;display:flex;gap:7px}
+.tb{width:28px;height:28px;border-radius:8px;border:1px solid var(--ctl);color:var(--row-sub);font-size:12px;
+  display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.tb:active{background:var(--press)}
+.tb.on{background:var(--gold);color:var(--on-gold);border-color:var(--gold)}
+/* 연출(☰)은 **켜진 것이 기본**이고 디자인은 그 기본 상태를 테두리 버튼(골드 아님)으로 그린다 —
+   그래서 켜짐에 골드를 칠하지 않고, 디자인에 없는 **꺼짐**만 흐리게 알린다. */
+.tb.off{opacity:.45}
+/* 값이 오기 전의 오버레이·연출 단추 — 자리는 지키고 흐리게만 */
+#btnOv:disabled,#btnOpen:disabled{opacity:.45;cursor:default}
+.tb svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+#search{height:32px;display:flex;align-items:center;gap:8px;padding:0 10px;border-radius:9px;background:var(--inset);border:1px solid var(--ctl)}
+#search svg{width:12px;height:12px;fill:none;stroke:var(--faint2);stroke-width:1.8;flex-shrink:0}
+#q{flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--ink);font:inherit;font-size:11px}
+#q::placeholder{color:var(--faint2)}
+#kbd{font-size:9px;line-height:1;color:var(--faint2);border:1px solid var(--ctl);border-radius:4px;padding:3px 5px;white-space:nowrap;flex-shrink:0}
+/* 알약 줄 — 재생목록이 늘면 가로로 넘친다. 좌우로 끌어서 굴리고, 「+ 목록」은 줄 밖에 고정한다
+   (넘친 줄이 그냥 잘려 있어서 재생목록도 「+ 목록」도 손이 닿지 않았다). */
+#filterrow{display:flex;gap:5px;align-items:center;min-width:0;font-size:10px;line-height:1}
+#filters{flex:1;min-width:0;display:flex;gap:5px;align-items:center;overflow-x:auto;scrollbar-width:none;cursor:grab}
+#filters::-webkit-scrollbar{display:none}
+#filters.drag{cursor:grabbing}
+#filters.more-r{-webkit-mask-image:linear-gradient(to right,#000 86%,transparent);mask-image:linear-gradient(to right,#000 86%,transparent)}
+#filters.more-l{-webkit-mask-image:linear-gradient(to right,transparent,#000 10%);mask-image:linear-gradient(to right,transparent,#000 10%)}
+#filters.more-l.more-r{-webkit-mask-image:linear-gradient(to right,transparent,#000 10%,#000 86%,transparent);mask-image:linear-gradient(to right,transparent,#000 10%,#000 86%,transparent)}
+/* 「목록 ▾」은 줄 밖에 고정이라 **줄지 않는다** — 그런데 보고 있는 재생목록 이름이 들어가면(서버는 200자까지 받는다)
+   375 창에서 알약 줄을 0 으로 밀고 제 끝이 창 밖으로 잘렸다. 폭의 절반까지만 쓰고 이름은 말줄임. */
+#plMenu{flex-shrink:0;max-width:50%;min-width:0}
+#plMenu .pln{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.chip{height:26px;padding:0 9px;border-radius:13px;display:inline-flex;align-items:center;gap:4px;line-height:1;
+  border:1px solid var(--ctl);color:var(--chip);font-size:10px;white-space:nowrap;flex-shrink:0}
+.chip .n{font-size:10px;color:var(--row-sub)}
+.chip.on{background:var(--gold);color:var(--on-gold);border-color:var(--gold);font-weight:700}
+.chip.on .n{color:var(--on-gold);opacity:.7}
+.chip.add{border-style:dashed;border-color:var(--dash);color:var(--row-sub);padding:0 8px}
+
+/* ── 목록 ── */
+#list{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--scroll) transparent}
+/* 고른 곡 막대(#selbar)는 목록 위에 떠 있다 — 막대가 떠 있는 동안은 목록 끝에 그만큼 여백을 둬서
+   마지막 줄이 막대 밑에 숨지 않게 한다 */
+body.selon #list{padding-bottom:52px}
+#list.dragsel{cursor:crosshair}
+#list.dim{opacity:.3;pointer-events:none}
+.row{display:grid;grid-template-columns:28px 1fr auto;gap:9px;align-items:center;padding:8px 10px;
+  border-bottom:1px solid var(--rowline);cursor:pointer}
+.row:active{background:var(--press)}
+.row.playing{background:color-mix(in srgb,var(--gold) 5%,transparent)}   /* rgba(226,184,102,.05) */
+.row.sel{background:var(--gold-fill);box-shadow:inset 3px 0 0 var(--gold)}
+.row .ens{width:28px;height:28px;border-radius:7px;border:1px solid var(--gold-line);background:var(--goldbg);
+  color:var(--gold);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1}
+.row .ens.none{border-color:var(--ctl);background:transparent;color:var(--faint)}
+.row .ens.e2{border-color:color-mix(in srgb,var(--gather) 40%,transparent);background:var(--gatherbg);color:var(--gold)}
+.row .ens.e6{border-color:color-mix(in srgb,var(--run) 40%,transparent);background:var(--runbg);color:var(--run)}
+.row .ens svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.5}
+/* 줄 앞 네모 = 곡 설정 단추. 크기·모양은 그대로 두고, 마우스를 올리면 그 위에 ⚙ 만 덮는다.
+   폰은 touch.css ① 이 [role=button] 에 보이지 않는 40px 판을 깐다 (보이는 크기 그대로) */
+.row .ens{position:relative;cursor:pointer}
+@media (hover:hover){.row .ens:hover::after{content:"⚙";position:absolute;inset:-1px;border-radius:7px;display:flex;
+  align-items:center;justify-content:center;background:var(--gold);color:var(--on-gold);font-size:13px;font-weight:400}}
+.row .ens:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.row .txt{min-width:0;display:flex;flex-direction:column;justify-content:center;gap:2px;overflow:hidden}
+.row .t{display:block;font-size:12px;font-weight:700;color:var(--row);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row.playing .t{color:var(--gold)}
+.row .s{display:block;font-size:10px;color:var(--row-sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .d{font-size:10px;color:var(--mono)}
+#empty{padding:44px 24px;text-align:center;color:var(--row-sub);font-size:12.5px;line-height:1.7}
+
+/* ── 고른 곡 막대 ── */
+#selbar{position:fixed;left:10px;right:10px;bottom:106px;z-index:6;display:flex;align-items:center;gap:6px;
+  padding:7px 9px;border-radius:12px;background:var(--panel);border:1px solid var(--gold-line);
+  box-shadow:0 10px 30px var(--shadow);font-size:12px}
+#selbar b{color:var(--gold);margin-right:auto;font-weight:600;white-space:nowrap}
+/* 재생목록 화면에서는 단추가 일곱(재생·담기·인원·↑·↓·제거·해제) — 470 폭 창에서 「선택 n」이 세 줄로 접히고 「해제」가
+   잘렸다. 이 막대 안에서만 간격·안쪽 여백·글자를 조금 줄인다. */
+#selbar{gap:4px;padding:6px 7px}
+#selbar .sm{padding:0 7px;font-size:11px;height:25px}
+#selbar #bUp,#selbar #bDown{padding:0 6px}
+.sm{height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--ctl);color:var(--ctl-ink);font-size:11.5px;
+  display:inline-flex;align-items:center;line-height:1;flex-shrink:0}
+.sm.pri{background:var(--gold);color:var(--on-gold);border-color:var(--gold);font-weight:600}
+
+/* ── 접힌 플레이어 ── */
+#player{flex-shrink:0;z-index:5}   /* 두 줄이 각자 윗선·바탕을 갖는다 */
+/* 합주가 끝났을 때의 물음 — 붙어 있던 사람들이 계속 치고 있을 수 있어 우리가 임의로 안 넘긴다 */
+#askbar{display:flex;align-items:center;gap:7px;padding:7px 14px;border-bottom:1px solid var(--line3);
+  background:var(--runbg);font-size:11.5px;color:var(--run)}
+#askbar[hidden]{display:none!important}
+#askT{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#instrow{display:flex;align-items:center;gap:7px;padding:8px 10px;border-top:1px solid var(--line);background:var(--bar)}
+#instrow .lb{font-size:10px;color:var(--row-sub);white-space:nowrap}
+/* 악기 칸은 브라우저 기본 〈select〉 가 아니다 — 그 목록은 미니 창을 덮고 앱 밖으로 삐져나왔다.
+   누르면 아래에서 **앱 안의 시트**(#isheet)가 올라오고 그 안에서 스크롤한다. */
+#instBtn{height:28px;padding:0 9px;border-radius:7px;background:var(--inset);border:1px solid var(--ctl);
+  color:var(--row);font:inherit;font-size:11px;flex:1;min-width:0;display:flex;align-items:center;gap:6px;text-align:left}
+#instT{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#instBtn .ar{flex-shrink:0;color:var(--faint2);font-size:10px}
+/* 악기 고정 중 — 칸에 고정한 악기와 금색 핀 */
+#instPin{flex-shrink:0;color:var(--gold);display:inline-flex}
+#instBtn.pinned{border-color:var(--gold-line)}
+#instBtn.pinned #instT{color:var(--gold)}
+/* 전체 재생 — 악기 줄 바로 위. 오버레이 상세창의 「▶ 전체 재생」과 같은 일:
+   지금 보고 있는 목록 전부를 대기열로 만들고 첫 곡부터 (같은 서버 길 /api/queue = engine.queue_set). */
+#allrow{display:flex;align-items:center;gap:8px;padding:7px 10px;border-top:1px solid var(--line);background:var(--bar)}
+#btnAll{height:28px;padding:0 12px;border-radius:7px;border:1px solid var(--gold-line);background:var(--gold-fill);
+  color:var(--gold);font-size:11px;font-weight:600;line-height:1;white-space:nowrap;flex-shrink:0}
+#btnAll:disabled{opacity:.45}
+#allT{flex:1;min-width:0;font-size:10px;color:var(--row-sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#btnEquip{height:28px;padding:0 10px;border-radius:7px;border:1px solid var(--gold-line);background:var(--gold-fill);
+  color:var(--gold);font-size:11px;font-weight:600;line-height:1;white-space:nowrap;flex-shrink:0}
+#btnEquip:disabled{opacity:.45}
+#mainrow{position:relative;display:flex;align-items:center;gap:8px;padding:9px 10px 11px;cursor:pointer;
+  border-top:1px solid var(--line);background:var(--bg)}
+#btnMain{width:38px;height:38px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#btnMain.idle{background:var(--ctl)}
+#btnMain .tri{width:0;height:0;border-left:11px solid var(--on-gold);border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:3px}
+#btnMain.idle .tri{border-left-color:var(--mono)}
+#btnMain .sq{width:13px;height:13px;border-radius:3px;background:var(--on-gold)}
+#nowwrap{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+#nowT{font-size:12px;font-weight:700;color:var(--title);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#nowsub{display:flex;gap:6px;font-size:10px;color:var(--row-sub);white-space:nowrap;min-width:0}
+#nowA{min-width:0;overflow:hidden;text-overflow:ellipsis}
+#nowA:empty{display:none}
+#ctime{flex-shrink:0}
+/* 탈것 탑승 중 — 게임이 연주를 받지 않는다 (CLI 로는 못 내린다). 재생을 미뤄 뒀으면 「내리면 재생」 */
+.mountb{flex-shrink:0;font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;line-height:1.3;
+  border:1px solid var(--badline);color:var(--pink);background:var(--badbg2)}
+.mountb[hidden]{display:none}
+#skick .mountb{letter-spacing:0;margin-left:4px}
+/* 재생바 — 줄 바닥에 **전폭 3px** (좌우 10px 안쪽) */
+#bar{position:absolute;left:10px;right:10px;bottom:0;height:3px;border-radius:2px;background:var(--track);overflow:hidden}
+#bar i{display:block;height:100%;width:0;background:var(--gold);border-radius:2px;transition:width .4s linear}
+#ctl{display:flex;gap:8px;flex-shrink:0}
+#ctl button{width:30px;height:30px;border-radius:8px;border:1px solid var(--ctl);color:var(--chip);font-size:13px;
+  display:inline-flex;align-items:center;justify-content:center}
+/* ＋ = 지금 재생 중인 곡 담기 — 골드 테두리 */
+#ctl #btnAddNow{border-color:var(--gold-line);background:var(--gold-fill);color:var(--gold);font-size:16px;font-weight:700;line-height:1}
+#ctl button svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+
+/* ── 펼친 플레이어 (시트) ── */
+/* 시트는 창보다 커질 수 없다 — 넘치면 **시트 안**(#sbody)이 스크롤된다. 예전에는 높이 제한이
+   없어서 작은 창(폰·주변 연주 탭)에서 아래쪽 줄이 화면 밖으로 밀려 손이 안 닿았다. */
+#sheet{position:fixed;left:0;right:0;bottom:0;z-index:7;background:var(--bar);border-top:1px solid var(--gold-line);
+  border-radius:14px 14px 0 0;box-shadow:0 -18px 44px var(--shadow);display:flex;flex-direction:column;max-height:calc(100% - 24px);
+  transform:translateY(100%);transition:transform .26s cubic-bezier(.2,.9,.3,1)}
+#sheet.open{transform:none}
+#grab{width:34px;height:3px;border-radius:2px;background:var(--dash);margin:8px auto 0;cursor:pointer;flex-shrink:0}
+#sbody{padding:10px 16px 14px;display:flex;flex-direction:column;gap:11px;flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y}
+#nowline{display:flex;align-items:center;gap:11px;min-width:0}
+#disc{width:54px;height:54px;flex-shrink:0}
+#skick{font-size:10px;font-weight:700;letter-spacing:.18em;color:var(--gold-dim)}
+#sT{font-size:19px;font-weight:700;color:var(--title);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
+#sS{font-size:11px;color:var(--bartext);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#sprog{display:flex;align-items:center;gap:9px}
+#sbar{flex:1;height:3px;border-radius:2px;background:var(--track);position:relative}
+#sbar i{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:2px;background:var(--gold);transition:width .4s linear}
+#stime{font-size:11px;color:var(--ctl-ink);white-space:nowrap}
+#strans{display:flex;align-items:center;gap:10px;padding-top:2px}
+#strans .rb{width:32px;height:32px;border-radius:50%;border:1px solid var(--ctl);color:var(--ctl-ink);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#strans .rb svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+#sMain{width:46px;height:46px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#sMain.idle{background:var(--ctl)}
+#sMain .sq{width:14px;height:14px;border-radius:4px;background:var(--on-gold)}
+#sMain .tri{width:0;height:0;border-left:15px solid var(--on-gold);border-top:10px solid transparent;border-bottom:10px solid transparent;margin-left:5px}
+#sMain.idle .tri{border-left-color:var(--mono)}
+#strans .gap{flex:1}
+.tog{width:30px;height:30px;border-radius:15px;border:1px solid var(--ctl);color:var(--mono);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tog.on{background:var(--gold-fill);border-color:var(--gold-line);color:var(--gold)}
+.tog svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+/* 펼친 플레이어의 탭 — 재생목록 / 주변 연주 */
+#stabs{display:flex;border-top:1px solid var(--line3);font-size:12px;line-height:1;margin:0 -16px;padding:0 16px}
+.stab{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;height:32px;
+  background:none;border:0;border-bottom:2px solid transparent;color:var(--row-sub);cursor:pointer;font:inherit}
+.stab:hover{color:var(--chip)}
+.stab.on{color:var(--gold);font-weight:700;border-bottom-color:var(--gold)}
+.stab .n{font-size:10px;color:var(--faint)}
+.stab .bdg{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 5px;
+  border-radius:9px;background:var(--gold);color:var(--on-gold);font-size:10px;font-weight:700;line-height:1}
+#squeue{padding-top:8px;display:flex;flex-direction:column;gap:6px}
+/* 주변 연주 — StartAt 이 같은 사람끼리 한 팀 */
+#snear{padding-top:8px;display:flex;flex-direction:column;gap:8px;max-height:260px;overflow:auto}
+#nhead{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--row-sub);line-height:1}
+#nhead b{font-weight:400}
+.ngrp{display:flex;flex-direction:column;gap:6px;padding-bottom:9px;border-bottom:1px solid var(--rowline)}
+.ngrp:last-child{border-bottom:0}
+.ngrp .top{display:flex;align-items:baseline;gap:8px;line-height:1.2}
+.ngrp .song{font-size:13px;font-weight:700;color:var(--row);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ngrp.me .song{color:var(--gold)}
+.ngrp .dist{margin-left:auto;font-size:10px;color:var(--row-sub);white-space:nowrap}
+.ngrp .tags{display:flex;align-items:center;gap:7px;line-height:1;flex-wrap:wrap}
+.ntag{display:inline-flex;align-items:center;height:19px;padding:0 8px;border-radius:10px;border:1px solid var(--ctl);
+  color:var(--chip);font-size:10px;white-space:nowrap}
+.ntag.size{background:var(--runbg);border-color:color-mix(in srgb,var(--run) 40%,transparent);color:var(--run);font-weight:700}
+.ntag.copy{border-color:var(--gold-line);color:var(--gold)}
+.ngrp .time{margin-left:auto;font-size:10px;color:var(--mono);white-space:nowrap}
+.ngrp .nbar{height:3px;border-radius:2px;background:var(--track);position:relative}
+.ngrp .nbar i{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:var(--gold)}
+.ngrp .mem{display:flex;gap:5px;flex-wrap:wrap}
+.ngrp .mem span{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:10px;
+  border:1px solid var(--ctl);background:var(--inset);font-size:10px;color:var(--chip);white-space:nowrap;line-height:1}
+.ngrp .mem i{font-style:normal;color:var(--row-sub)}
+#nnote{font-size:10px;color:var(--faint);line-height:1.5;word-break:keep-all}
+#qhead{display:flex;align-items:center;font-size:10px;letter-spacing:.14em;color:var(--faint)}
+#qEdit{margin-left:auto;font-size:11px;letter-spacing:0;color:var(--gold-dim)}
+.qrow{display:grid;grid-template-columns:13px 1fr auto;gap:9px;align-items:center;font-size:12px;min-height:26px;cursor:pointer;border-radius:6px}
+.qrow:active{background:var(--press)}
+.qrow span{color:var(--faint3)}
+.qrow b{font-weight:400;color:var(--row);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qrow b .qi{font-size:10.5px;color:var(--row-sub);font-weight:400;margin-left:6px}
+.qrow i{font-style:normal;color:var(--row-sub)}
+.qrow.now b{color:var(--gold);font-weight:600}
+#scrim{position:fixed;inset:0;z-index:6;background:transparent}
+
+/* ── 악기 고르기 시트 ── 브라우저 기본 〈select〉 대신. 플레이어 시트(#sheet) 위에도 올라올 수 있어 z 가 더 높다.
+   목록(#ilist)만 스크롤되고 머리(#ihead)는 붙어 있다. */
+#iscrim{position:fixed;inset:0;z-index:8;background:var(--backdrop)}
+#isheet{position:fixed;left:0;right:0;bottom:0;z-index:9;background:var(--bar);border-top:1px solid var(--gold-line);
+  border-radius:14px 14px 0 0;box-shadow:0 -18px 44px var(--shadow);display:flex;flex-direction:column;
+  height:min(72vh,calc(100% - 48px));transform:translateY(100%);transition:transform .22s cubic-bezier(.2,.9,.3,1)}
+/* 높이는 **고정** — 검색할 때마다 결과 수에 따라 시트가 오르내렸다. 남는 자리는 비워 둔다. */
+#isheet.open{transform:none}
+#ihead{flex-shrink:0;padding:12px 16px 8px;display:flex;flex-direction:column;gap:3px;border-bottom:1px solid var(--line3)}
+#ikick{font-size:10px;font-weight:700;letter-spacing:.18em;color:var(--gold-dim)}
+#iT{font-size:14px;font-weight:700;color:var(--title);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#ilist{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;padding:6px 8px 12px;
+  scrollbar-width:thin;scrollbar-color:var(--scroll) transparent}
+.irow{display:flex;align-items:center;gap:8px;min-height:44px;padding:6px 10px;border-radius:9px;cursor:pointer;font-size:13px;color:var(--row)}
+.irow:active{background:var(--press)}
+.irow.on{background:var(--gold-fill);color:var(--gold);font-weight:600}
+.irow .chk{width:14px;flex-shrink:0;text-align:center;color:var(--gold);font-size:11px}
+.irow .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.irow .bd{flex-shrink:0;font-size:10px;padding:2px 6px;border-radius:8px;border:1px solid var(--gold-line);color:var(--gold);line-height:1.2}
+.irow .bd.warn{border-color:var(--badline);color:var(--pink)}
+.irow.def .nm{color:var(--row-sub)}
+.irow.def.on .nm{color:var(--gold)}
+/* 오버레이 악기 고르기와 같은 양식:
+   종류 탭(「전체」 + [종류], 개수) · 검색칸 + 「장착」 + 고정 · 목록(지금 악기 금색) · 「n / 전체」.
+   거르는 규칙은 /folio/inst_picker.js (루트 inst_picker.py 와 같은 검사를 돈다). */
+#itabs{flex-shrink:0;display:flex;gap:6px;overflow-x:auto;padding:8px 12px;border-bottom:1px solid var(--line3);scrollbar-width:none}
+#itabs::-webkit-scrollbar{display:none}
+#itabs .chip{flex-shrink:0}
+#itabs{cursor:grab}
+#itabs.drag{cursor:grabbing}
+#itabs.more-r{-webkit-mask-image:linear-gradient(to right,#000 86%,transparent);mask-image:linear-gradient(to right,#000 86%,transparent)}
+#itabs.more-l{-webkit-mask-image:linear-gradient(to right,transparent,#000 10%);mask-image:linear-gradient(to right,transparent,#000 10%)}
+#itabs.more-l.more-r{-webkit-mask-image:linear-gradient(to right,transparent,#000 10%,#000 86%,transparent);mask-image:linear-gradient(to right,transparent,#000 10%,#000 86%,transparent)}
+#isearch{flex-shrink:0;display:flex;align-items:center;gap:7px;padding:8px 12px;border-bottom:1px solid var(--line3)}
+#iqbox{flex:1;min-width:0;height:30px;display:flex;align-items:center;gap:6px;padding:0 9px;border-radius:8px;
+  background:var(--inset);border:1px solid var(--gold-dim)}
+#iqbox svg{width:13px;height:13px;flex-shrink:0;fill:none;stroke:var(--row-sub);stroke-width:1.8;stroke-linecap:round}
+#iq{flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--ink);font:inherit;font-size:12px}
+#iq::placeholder{color:var(--faint)}
+#iEquip{height:30px;padding:0 10px;border-radius:8px;border:1px solid var(--gold-line);background:var(--gold-fill);
+  color:var(--gold);font-size:11px;font-weight:600;line-height:1;white-space:nowrap;flex-shrink:0}
+/* 악기 고정 단추 — 켜면 금색 (오버레이의 고정 단추와 같은 말투) */
+.pinbtn{width:30px;height:30px;border-radius:8px;border:1px solid var(--ctl);background:var(--inset);color:var(--chip);
+  display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.pinbtn.on{border-color:var(--gold);background:var(--goldDim);color:var(--gold)}
+.pinbtn svg,#instPin svg,.irow .pn svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.irow .kd{flex-shrink:0;color:var(--gold-dim)}
+.irow.on .kd{color:var(--gold)}
+.irow.hi{background:var(--press)}
+.irow.on.hi{background:var(--gold-fill)}
+.irow .pn{flex-shrink:0;color:var(--gold);display:inline-flex}
+#ifoot{flex-shrink:0;display:flex;justify-content:space-between;gap:8px;padding:6px 14px 10px;font-size:10px;color:var(--row-sub);
+  border-top:1px solid var(--line3);white-space:nowrap}
+
+/* ── 커버 고르기 시트 ── 줄 메뉴 「커버 고르기…」. 악기 시트와 같은 자리·모양.
+   칸은 카드 모양(1 : 1.42) — 「번호대로」 · 앱 기본 · 내 이미지. 지금 고른 칸은 골드 테두리. */
+#cscrim{position:fixed;inset:0;z-index:8;background:var(--backdrop)}
+#csheet{position:fixed;left:0;right:0;bottom:0;z-index:9;background:var(--bar);border-top:1px solid var(--gold-line);
+  border-radius:14px 14px 0 0;box-shadow:0 -18px 44px var(--shadow);display:flex;flex-direction:column;
+  max-height:min(78vh,calc(100% - 40px));transform:translateY(100%);transition:transform .22s cubic-bezier(.2,.9,.3,1)}
+#csheet.open{transform:none}
+#chead{flex-shrink:0;padding:12px 16px 8px;display:flex;flex-direction:column;gap:3px;border-bottom:1px solid var(--line3)}
+#ckick{font-size:10px;font-weight:700;letter-spacing:.18em;color:var(--gold-dim)}
+#cT{font-size:14px;font-weight:700;color:var(--title);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#cbody{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;padding:8px 14px 12px;
+  scrollbar-width:thin;scrollbar-color:var(--scroll) transparent}
+.csec{font-size:10px;letter-spacing:.14em;color:var(--faint);margin:8px 2px 6px}
+.cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px}
+.ccell{position:relative;aspect-ratio:1/1.42;border-radius:7px;overflow:hidden;cursor:pointer;background:var(--inset,#0f1620);
+  border:1.5px solid var(--ctl);padding:0}
+.ccell img{width:100%;height:100%;object-fit:cover;display:block}
+.ccell.on{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold-fill)}
+.ccell .ck{position:absolute;right:4px;top:4px;width:16px;height:16px;border-radius:50%;background:var(--gold);color:var(--on-gold);
+  font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1}
+.ccell .nm{position:absolute;left:0;right:0;bottom:0;padding:10px 4px 3px;font-size:9px;color:#fff;text-align:center;
+  background:linear-gradient(transparent,rgba(0,0,0,.65));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ccell.auto{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border-style:dashed;
+  color:var(--chip);font-size:11px;text-align:center;line-height:1.3}
+.ccell.auto small{font-size:9.5px;color:var(--row-sub)}
+.ccell.auto.on{color:var(--gold)}
+#cfoot{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:8px 16px 12px;border-top:1px solid var(--line3)}
+#cfoot[hidden]{display:none}
+#cHint{font-size:10.5px;color:var(--faint);line-height:1.4;min-width:0;flex:1}
+/* 「번호대로」 칸 — 자동으로 받는 그림(대개 생성 커버)을 그대로 보인다 (기본값) */
+.ccell.auto.img{display:block;border-style:solid}
+.ccell.auto.img .nm b{font-weight:700}
+/* 「온라인에서 찾기」 (선택 기능) — 사람이 누를 때만 찾는다. 후보는 카드 모양 칸:
+   정사각형 앨범 그림을 흐린 확대 배경 위 가운데에 (연출 카드와 같은 모양), 아래에 제목·아티스트·앨범, 왼쪽 위에 출처 */
+.conl{display:flex;gap:6px;align-items:center;margin:2px 0 4px}
+.conl input{flex:1;min-width:0;height:26px;border-radius:7px;border:1px solid var(--ctl);background:var(--inset,#0f1620);
+  color:var(--ink);font:inherit;font-size:11.5px;padding:0 8px;outline:none}
+.conl input:focus{border-color:var(--gold-line)}
+.cnote{font-size:10px;color:var(--faint);line-height:1.4;margin:0 2px 6px}
+.cmsg{font-size:11px;color:var(--row-sub);margin:4px 2px 6px;line-height:1.45;word-break:keep-all}
+.cmsg.bad{color:var(--pink,#ff6f9c)}
+.cgrid.og{grid-template-columns:repeat(auto-fill,minmax(96px,1fr))}   /* 후보 칸은 글씨 석 줄이 들어가게 조금 크게 */
+.ocell{position:relative;aspect-ratio:1/1.42;border-radius:7px;overflow:hidden;cursor:pointer;background:#111;
+  border:1.5px solid var(--ctl);display:flex;flex-direction:column}
+.ocell.on{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold-fill)}
+.ocell.busy{opacity:.55;cursor:progress}
+.ocell .bg{position:absolute;inset:-14%;background:var(--t) center/cover no-repeat;filter:blur(10px) brightness(.62)}
+.ocell .sqi{position:relative;width:100%;aspect-ratio:1/1;background:var(--t) center/contain no-repeat}
+.ocell .tx{position:relative;flex:1;min-height:0;padding:3px 5px 4px;display:flex;flex-direction:column;justify-content:flex-end;
+  gap:1px;background:linear-gradient(transparent,rgba(0,0,0,.55))}
+.ocell .tx span{font-size:8.5px;color:rgba(255,255,255,.72);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
+.ocell .tx b{font-size:9.5px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
+.ocell .src{position:absolute;left:4px;top:4px;padding:1px 5px;border-radius:6px;background:rgba(0,0,0,.6);color:#fff;
+  font-size:8.5px;font-weight:700;letter-spacing:.02em}
+.ocell a{position:absolute;right:4px;top:4px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;
+  font-size:10px;display:flex;align-items:center;justify-content:center;text-decoration:none}
+.ocell a:hover{background:var(--gold);color:var(--on-gold)}
+/* 「내 이미지 관리 ›」 — 시트 바닥의 작은 글자 링크 (쓰는 내 이미지를 보는 페이지는 따로) */
+#cManage{flex-shrink:0;font-size:11px;color:var(--gold);text-decoration:none;white-space:nowrap}
+#cManage:hover{color:var(--gold-hi);text-decoration:underline}
+
+/* ── 곡 설정 시트 (전 이름 「곡 상세」) ── 「이 곡엔 이 인사·이 커버·이 악기」를 한 곳에서.
+   목록 줄은 「제목 / 아티스트 · 길이」 셋뿐이라 줄에 단추를 더할 자리가 없다 — 그래서 시트다.
+   들어오는 길: 줄 앞 네모 · 줄 메뉴 맨 위 「곡 설정 (악기·커버·인사)…」 · 펼친 플레이어의 제목. 줄을 누르면 **있는 시트**(악기 · 커버)를 그 위에 연다
+   — 그래서 z 는 악기·커버 시트와 같고 DOM 에서 그 둘보다 앞에 둔다 (같은 z 면 뒤의 것이 위). */
+#dscrim{position:fixed;inset:0;z-index:8;background:var(--backdrop)}
+#dsheet{position:fixed;left:0;right:0;bottom:0;z-index:8;background:var(--bar);border-top:1px solid var(--gold-line);
+  border-radius:14px 14px 0 0;box-shadow:0 -18px 44px var(--shadow);display:flex;flex-direction:column;
+  max-height:min(84vh,calc(100% - 32px));transform:translateY(100%);transition:transform .22s cubic-bezier(.2,.9,.3,1)}
+#dsheet.open{transform:none}
+/* **닫힌 시트는 그림자도 없다** (가만히 있는데 아래가 어두워 보였다).
+   닫힌 넷은 화면 바로 아래(translateY 100%)에 붙어 있을 뿐이라, 위로 드리우는 그림자(0 -18px 44px)가
+   바닥 62px 안으로 새어 들어와 발 줄·재생 막대를 넷 겹으로 덮었다 (실측 밝기 16 → 2, 막대 35 → 3).
+   그림자는 열렸을 때만 · 닫는 움직임이 끝나면 아예 감춘다(탭 순서·읽기 기계에서도 빠진다).
+   여는 쪽은 위의 기본 규칙(visibility 없음 → 곧바로 보임)을 탄다. */
+#sheet:not(.open),#isheet:not(.open),#csheet:not(.open),#dsheet:not(.open){box-shadow:none;visibility:hidden;
+  transition:transform .24s cubic-bezier(.2,.9,.3,1),visibility 0s linear .26s}
+#dhead{flex-shrink:0;display:flex;gap:12px;align-items:center;padding:14px 16px 12px;border-bottom:1px solid var(--line3)}
+#dCover{position:relative;width:64px;aspect-ratio:1/1.42;flex-shrink:0;border-radius:7px;overflow:hidden;
+  background:var(--inset);border:1px solid var(--ctl)}
+#dCover img{width:100%;height:100%;object-fit:cover;display:block}
+#dCover .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--faint)}
+#dinfo{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+#dId{font-size:10px;letter-spacing:.08em;color:var(--gold-dim)}
+#dT{font-size:15px;font-weight:700;color:var(--title);line-height:1.25;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:keep-all}
+#dA{font-size:11px;color:var(--row-sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#dA:empty{display:none}
+#dMeta{font-size:10px;color:var(--faint);line-height:1.45}
+#dbody{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;padding:2px 12px 8px;
+  scrollbar-width:thin;scrollbar-color:var(--scroll) transparent}
+.drow{display:flex;align-items:center;gap:10px;min-height:50px;padding:8px 4px;border-bottom:1px solid var(--rowline);cursor:pointer}
+.drow:active{background:var(--press)}
+.drow.ro{cursor:default}
+.drow.ro:active{background:none}
+.drow .lb{width:52px;flex-shrink:0;font-size:11px;color:var(--row-sub)}
+.drow .v{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.drow .v b{font-size:12.5px;font-weight:600;color:var(--row);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.drow .v b.over{color:var(--faint);text-decoration:line-through}
+.drow .v small{font-size:10px;color:var(--faint);line-height:1.4;word-break:keep-all}
+.drow .v .pin{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--gold)}
+.drow .v .pin svg{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.drow .ar{flex-shrink:0;color:var(--faint2);font-size:13px}
+.dpls{display:flex;flex-wrap:wrap;gap:5px}
+.dpls .chip{max-width:100%}
+.dpls .chip .t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dpls .chip .n{max-width:120px;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+.dopts{padding:4px 0 6px 56px;border-bottom:1px solid var(--rowline)}
+.dopts .irow{min-height:36px;font-size:12px}
+.dopts .irow.edit .nm{color:var(--gold-dim)}
+#dfoot{flex-shrink:0;padding:10px 16px 12px;border-top:1px solid var(--line3)}
+#dPlay{width:100%;height:36px;border-radius:9px;background:var(--gold);color:var(--on-gold);font-size:12.5px;font-weight:700;line-height:1}
+#sT{cursor:pointer}
+
+/* ── 그 밖 ── */
+#toast{position:fixed;inset:auto;left:50%;bottom:112px;transform:translateX(-50%);margin:0;width:max-content;max-width:92%;z-index:12;
+  padding:9px 14px;border-radius:12px;background:var(--badbg);border:1px solid var(--badline);
+  color:var(--ink);font-size:12.5px;box-shadow:0 8px 24px var(--shadow)}
+#toast.ok{background:var(--goldbg);border-color:var(--gold-line)}
+/* 고른 곡 막대가 떠 있으면 그 위로 — 막대(바닥 106 · 높이 39)와 쪽지(바닥 112)가 겹쳐 「▶ 재생」「+ 담기」… 를
+   덮었다. 시트 규칙이 뒤에 있어 시트가 열렸을 때는 그쪽이 이긴다. */
+body.selon #toast{bottom:calc(106px + 39px + 10px + var(--sab))}
+/* 시트가 열려 있으면 그 위로 — 안 그러면 안내 쪽지가 재생 단추를 덮는다 */
+body.sheeton #toast{bottom:calc(var(--sheeth,300px) + 10px)}
+/* ── 아래 안전 영역 (아이폰 홈 막대) ── 이 화면은 `viewport-fit=cover` 라 바닥이 홈 막대 밑까지 내려간다.
+   발 줄·시트 발·막대·쪽지를 그만큼 올린다. PC·안전 영역 없는 기기에서는 0 — 모양 그대로. */
+:root{--sab:env(safe-area-inset-bottom, 0px)}
+#mainrow{padding-bottom:calc(11px + var(--sab))}
+#ifoot{padding-bottom:calc(10px + var(--sab))}
+#cfoot{padding-bottom:calc(12px + var(--sab))}
+#dfoot{padding-bottom:calc(12px + var(--sab))}
+#sbody{padding-bottom:calc(14px + var(--sab))}
+#selbar{bottom:calc(106px + var(--sab))}
+#toast{bottom:calc(112px + var(--sab))}
+body.selon #list{padding-bottom:calc(52px + var(--sab))}
+dialog{border:none;border-radius:14px;background:var(--panel);color:var(--ink);padding:16px;width:min(92vw,340px);
+  box-shadow:0 20px 60px var(--shadow)}
+dialog::backdrop{background:var(--backdrop)}
+dialog input{width:100%;margin-top:10px;padding:9px 11px;border-radius:9px;background:var(--inset);
+  border:1px solid var(--ctl);color:var(--ink);font:inherit;outline:none}
+.dlgrow{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.menu{position:fixed;z-index:20;min-width:180px;max-width:260px;padding:6px;border-radius:12px;background:var(--panel);
+  border:1px solid var(--line);box-shadow:0 16px 40px var(--shadow);font-size:12.5px}
+.menu div{padding:8px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.menu div:active{background:var(--press)}
+.menu .hd{color:var(--row-sub);cursor:default;font-size:11px}
+
+</style>
+<!-- 색은 **작업 쪽 색표 하나**를 쓴다. 차례가 규칙이다 —
+     위의 `<style>` 다음에 와야 겹치는 이름을 덮는다. -->
+<link rel="stylesheet" href="/css/tokens.css">
+<link rel="stylesheet" href="/css/folio-bridge.css">
+<link rel="stylesheet" href="/css/shell.css">
+<!-- 손가락 기기 규칙 — 작업 화면과 **같은 파일** (css/touch.css) · 맨 마지막 -->
+<link rel="stylesheet" href="/css/touch.css">
+<!-- 테마 (설정 ui_theme — 두 앱 공통). 이 PC 는 서버가 <html data-theme> 을 박아 내고, 폰은 이 파일이 머리에서 입힌다 -->
+<script src="/js/theme.js"></script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+<symbol id="ic-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+<symbol id="ic-pin" viewBox="0 0 24 24"><path d="M8 3h8M9 3v7l-3 5h12l-3-5V3M12 15v7"/></symbol>
+<symbol id="ic-shuffle" viewBox="0 0 24 24"><path d="M16 4h4v4M4 20l16-16M16 20h4v-4M4 4l5 5"/></symbol>
+<symbol id="ic-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></symbol>
+<symbol id="ic-out" viewBox="0 0 24 24"><path d="M14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14"/><path d="M10 8l-4 4 4 4"/><path d="M6 12h9"/></symbol>
+<symbol id="ic-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.05 10.11 L21.70 10.64 L21.70 13.36 L19.05 13.89 L18.32 15.65 L19.83 17.90 L17.90 19.83 L15.65 18.32 L13.89 19.05 L13.36 21.70 L10.64 21.70 L10.11 19.05 L8.35 18.32 L6.10 19.83 L4.17 17.90 L5.68 15.65 L4.95 13.89 L2.30 13.36 L2.30 10.64 L4.95 10.11 L5.68 8.35 L4.17 6.10 L6.10 4.17 L8.35 5.68 L10.11 4.95 L10.64 2.30 L13.36 2.30 L13.89 4.95 L15.65 5.68 L17.90 4.17 L19.83 6.10 L18.32 8.35Z"/></symbol>
+<symbol id="ic-prev" viewBox="0 0 24 24"><path d="M18 5v14L8 12z"/><path d="M6 5v14"/></symbol>
+<symbol id="ic-next" viewBox="0 0 24 24"><path d="M6 5v14l10-7z"/><path d="M18 5v14"/></symbol>
+<symbol id="ic-scroll" viewBox="0 0 24 24"><path d="M7 4h10v16H7z"/><path d="M9.5 8h5M9.5 12h5"/></symbol>
+<symbol id="ic-rep" viewBox="0 0 24 24"><path d="M4 9a4 4 0 0 1 4-4h11"/><path d="M16 2l3 3-3 3"/><path d="M20 15a4 4 0 0 1-4 4H5"/><path d="M8 22l-3-3 3-3"/></symbol>
+<symbol id="ic-rep-one" viewBox="0 0 24 24"><path d="M4 9a4 4 0 0 1 4-4h11"/><path d="M16 2l3 3-3 3"/><path d="M20 15a4 4 0 0 1-4 4H5"/><path d="M8 22l-3-3 3-3"/><path d="M11.55 10.7L12.45 10V14"/></symbol>
+<symbol id="ic-rep-off" viewBox="0 0 24 24"><path d="M4 9a4 4 0 0 1 4-4h11"/><path d="M16 2l3 3-3 3"/><path d="M20 15a4 4 0 0 1-4 4H5"/><path d="M8 22l-3-3 3-3"/><path d="M4 3l16 18"/></symbol>
+<symbol id="ic-up" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
+<symbol id="ic-ov" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="8" rx="2"/><path d="M7 18h10"/></symbol>
+<symbol id="ic-open" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="4" rx="1"/><rect x="2" y="16" width="20" height="4" rx="1"/><path d="M7 12h10"/></symbol>
+<symbol id="ic-greet" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H8l-4 3v-4.5A8 8 0 0 1 13 4a8 8 0 0 1 8 8z"/><path d="M9 11h.01M13 11h.01M16 11h.01"/></symbol>
+</defs></svg>
+
+<div id="app">
+  <div id="hdr">
+    <div id="brandrow">
+      <b>모비폴리오</b>
+      <span id="conn" class="off" title="연결 확인 중"><i></i><span id="connT" class="a11y-only">연결 확인 중</span></span>
+      <span id="tools">
+        <button class="tb" id="btnSync" title="갱신"><svg><use href="#ic-refresh"/></svg></button>
+        <!-- 오버레이와 연출은 **별개 기능이라 단추도 따로** (☰ 메뉴로 합쳤던 것을 되돌렸다).
+             **불러오기로는 숨기지 않는다** (불러오는 동안 단추가 없다가 생기지 않게) — 첫 화면부터 자리를 지키고,
+             값이 오기 전에는 흐리게(disabled) 둔다. 숨기는 것은 할 수 있는 일(CAN)뿐: 오버레이는 이 PC 에서만, 연결 끊기는 밖에서만. -->
+        <button class="tb" id="btnOv" title="불러오는 중 — 오버레이 상태를 받으면 누를 수 있습니다" disabled><svg><use href="#ic-ov"/></svg></button>
+        <button class="tb" id="btnOpen" title="불러오는 중 — 설정을 받으면 누를 수 있습니다" disabled><svg><use href="#ic-open"/></svg></button>
+        <button class="tb" id="btnGreet" title="연주 인사 · 프리셋"><svg><use href="#ic-greet"/></svg></button>
+        <button class="tb" id="btnSet" title="설정"><svg><use href="#ic-gear"/></svg></button>
+        <button class="tb" id="btnOut" title="연결 끊기" hidden><svg><use href="#ic-out"/></svg></button>
+      </span>
+    </div>
+    <div id="finder">
+      <div id="search"><svg><use href="#ic-search"/></svg><input id="q" placeholder="제목·아티스트 검색"><span id="kbd" class="mono">Ctrl K</span></div>
+      <div id="filterrow"><div id="filters"></div>
+        <button class="chip add" id="plMenu" title="재생목록 고르기·만들기">목록 <span class="n mono" id="plN">0</span> ▾</button></div>
+    </div>
+  </div>
+
+  <div id="list"></div>
+
+  <div id="selbar" hidden>
+    <b id="selN">선택 0</b>
+    <button class="sm pri" id="bPlay">▶ 재생</button>
+    <button class="sm" id="bAdd">+ 담기</button>
+    <button class="sm" id="bEns" title="고른 곡의 합주 인원을 한 번에 지정">인원</button>
+    <button class="sm" id="bUp" hidden>↑</button>
+    <button class="sm" id="bDown" hidden>↓</button>
+    <button class="sm" id="bRemove" hidden>제거</button>
+    <button class="sm" id="bClear">해제</button>
+  </div>
+
+  <div id="player">
+    <div id="askbar" hidden>
+      <span id="askT">합주가 끝났습니다 — 다음 곡으로 넘어갈까요?</span>
+      <button class="sm pri" id="askGo">다음 곡</button>
+      <button class="sm" id="askNo">그만</button>
+    </div>
+    <div id="allrow">
+      <button id="btnAll" title="지금 보고 있는 목록 전부를 재생목록으로 만들고 첫 곡부터 재생합니다" disabled>▶ 전체 재생</button>
+      <span id="allT"></span>
+    </div>
+    <div id="instrow">
+      <span class="lb">악기</span>
+      <button id="instBtn" title="이 곡에 쓸 악기 — 누르면 목록이 올라옵니다"><span id="instPin" hidden title="악기 고정 중"><svg><use href="#ic-pin"/></svg></span><span id="instT">악기 그대로</span><span class="ar">▾</span></button>
+      <button id="btnEquip" title="연주하지 않고 악기만 바꿔 듭니다">장착</button>
+    </div>
+    <div id="mainrow">
+      <button id="btnMain" class="idle" title="재생/정지"><span class="tri" id="mainIcon"></span></button>
+      <div id="nowwrap">
+        <div id="nowT">대기</div>
+        <div id="nowsub"><span id="nowA"></span><span id="ctime" class="mono">0:00 / 0:00</span><span id="mountB" class="mountb" hidden>탈것 탑승 중</span></div>
+      </div>
+      <span id="ctl">
+        <button id="btnAddNow" title="지금 재생 중인 곡 담기">+</button>
+        <button id="btnPrev" title="이전"><svg><use href="#ic-prev"/></svg></button>
+        <button id="btnNext" title="다음"><svg><use href="#ic-next"/></svg></button>
+        <button id="btnUp" title="플레이어 펼치기"><svg><use href="#ic-up"/></svg></button>
+      </span>
+      <div id="bar"><i id="prog"></i></div>
+    </div>
+  </div>
+</div>
+
+<div id="scrim" hidden></div>
+<div id="sheet">
+  <div id="grab"></div>
+  <div id="sbody">
+    <div id="nowline">
+      <svg id="disc" viewBox="0 0 192 192"><defs><radialGradient id="mf-d"><stop offset="0" stop-color="#20242c"/><stop offset=".85" stop-color="#0e1116"/><stop offset="1" stop-color="#2a2f3a"/></radialGradient></defs>
+        <circle cx="96" cy="96" r="88" fill="url(#mf-d)"/><g fill="none" stroke="#3a4150" stroke-width="3"><circle cx="96" cy="96" r="76"/><circle cx="96" cy="96" r="62"/><circle cx="96" cy="96" r="48"/></g>
+        <circle cx="96" cy="96" r="88" fill="none" stroke="#e2b866" stroke-width="5"/><circle cx="96" cy="96" r="32" fill="#e2b866"/><circle cx="96" cy="96" r="5" fill="#0b0f16"/></svg>
+      <div style="min-width:0;flex:1">
+        <div id="skick"><span id="skickT">READY</span> <span id="sMount" class="mountb" hidden>탈것 탑승 중</span></div>
+        <div id="sT">대기</div>
+        <div id="sS">연주 중인 곡이 없습니다</div>
+      </div>
+    </div>
+    <div id="sprog"><div id="sbar"><i id="sprogi"></i></div><span id="stime" class="mono">0:00 / 0:00</span></div>
+    <div id="strans">
+      <button class="rb" id="sPrev" title="이전"><svg><use href="#ic-prev"/></svg></button>
+      <button id="sMain" class="idle" title="재생/정지"><span class="tri" id="sMainIcon"></span></button>
+      <button class="rb" id="sNext" title="다음"><svg><use href="#ic-next"/></svg></button>
+      <span class="gap"></span>
+      <button class="tog" id="btnRepeat" title="반복"><svg id="repIcon"><use href="#ic-rep-off"/></svg></button>
+      <button class="tog" id="btnShuffle" title="셔플"><svg><use href="#ic-shuffle"/></svg></button>
+    </div>
+    <div id="stabs">
+      <button class="stab on" id="tabQueue" data-t="queue">재생목록 <span class="n mono" id="tabQN">0</span></button>
+      <button class="stab" id="tabNear" data-t="near">주변 연주 <span class="bdg mono" id="tabNN" hidden>0</span></button>
+    </div>
+    <div id="squeue">
+      <div id="qhead"><span id="qlabel">다음 곡</span><button id="qEdit">재생목록 편집</button></div>
+      <div id="qlist"></div>
+    </div>
+    <div id="snear" hidden>
+      <div id="nhead"></div>
+      <div id="nlist"></div>
+      <div id="nnote">악보함에 없는 곡은 제목 그대로 · 이름 대신 <b>칭호</b>를 보여 줍니다(게임이 닉네임을 주지 않습니다)</div>
+    </div>
+  </div>
+</div>
+
+<div id="dscrim" hidden></div>
+<div id="dsheet" role="dialog" aria-labelledby="dT">
+  <div id="dhead">
+    <div id="dCover"></div>
+    <div id="dinfo"><div id="dId" class="mono"></div><div id="dT"></div><div id="dA"></div><div id="dMeta" class="mono"></div></div>
+  </div>
+  <div id="dbody"></div>
+  <div id="dfoot"><button id="dPlay">▶ 이 곡 재생</button></div>
+</div>
+
+<div id="iscrim" hidden></div>
+<div id="isheet" role="dialog" aria-labelledby="iT">
+  <div id="ihead"><div id="ikick">악기</div><div id="iT"></div></div>
+  <div id="itabs"></div>
+  <div id="isearch">
+    <label id="iqbox"><svg><use href="#ic-search"/></svg><input id="iq" autocomplete="off" spellcheck="false" placeholder="악기 이름 검색 — 띄어 쓰면 모두 들어간 것만"></label>
+    <button id="iEquip" title="연주하지 않고 이 악기만 바꿔 듭니다">장착</button>
+    <button class="pinbtn" id="iPin" title="악기 고정 — 켜 두면 곡·기본 악기와 상관없이 이 악기로 재생합니다"><svg><use href="#ic-pin"/></svg></button>
+  </div>
+  <div id="ilist"></div>
+  <div id="ifoot"><span id="iN"></span><span class="pc-hint">↑↓ 고르기 · Enter 고르기 · Esc 닫기</span></div>
+</div>
+
+<div id="cscrim" hidden></div>
+<div id="csheet" role="dialog" aria-labelledby="cT">
+  <div id="chead"><div id="ckick">카드 커버</div><div id="cT"></div></div>
+  <div id="cbody"></div>
+  <div id="cfoot"><button class="sm" id="cAdd">내 이미지 추가…</button><span id="cHint">png · jpg · webp · gif · 8MB 까지 · 1000×1420 권장</span>
+    <a id="cManage" href="/folio/covers.html">내 이미지 관리 ›</a>
+    <input type="file" id="cFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden></div>
+</div>
+
+<div id="toast" popover></div>
+<dialog id="dlg"><div id="dlgTitle"></div><input id="dlgInput"><div class="dlgrow"><button class="sm" id="dlgCancel">취소</button><button class="sm pri" id="dlgOk">확인</button></div></dialog>
+
+<script src="/folio/net.js"></script>
+<script src="/folio/inst.js"></script>
+<script src="/folio/inst_picker.js"></script>
+<script>
+const $=(id)=>document.getElementById(id);
+const TOKEN=MF.TOKEN,REMOTE=MF.REMOTE,CAN=MF.CAN,api=MF.api;   // 전송층은 net.js 가 쥔다 (PC 안·밖 겸용)
+// 머리줄에서 **할 수 있는 일(CAN)로만** 감춘다 — 첫 그림 전에. 불러오기 상태로는 감추지 않는다 (ovSync·opSync 는 흐림만 푼다)
+if(!CAN.overlay)$("btnOv").hidden=true;
+var goingInside=false;   // 설정 페이지로 옮겨 가는 중인가 (창 닫힘 신호를 막는다)
+// 바깥 링크는 **https:// 로 시작하는 것만** href 에 넣는다 — esc 는 javascript: 를 못 막는다 (보안)
+const safeLink=(u)=>/^https:\/\/[^\s"'<>\\]+$/.test(String(u||""))?String(u):"";
+// 온라인 썸네일은 서버가 data: 로 바꿔 준 것만 CSS 에 넣는다 (`')` 로 style 을 끊지 못하게)
+const safeThumb=(u)=>/^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(String(u||""))?String(u):"";
+const esc=(s)=>String(s??"").replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));   // ' 도 — 따옴표 종류를 가리지 않게 (보안)
+const fmtSec=(s)=>{s=Math.max(0,Math.floor(s||0));return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;};
+// 잇기 화면(net.js #mfpair · MF_PAIRING)이 떠 있으면 쪽지를 내지 않는다 — 아직 이어지지도 않았는데 「서버에서 곡 목록을
+// 받지 못했습니다」가 잇기 화면 위(popover = 맨 위 층)에 떴다. 작업 화면의 잇기 화면에는 없는 말이다.
+function toast(msg,ms=4000,kind=""){if(window.MF_PAIRING)return;const t=$("toast");t.className=kind;t.textContent=msg;try{if(!t.matches(":popover-open"))t.showPopover();}catch{}clearTimeout(t._t);t._t=setTimeout(()=>{try{t.hidePopover();}catch{}},ms);}
+window.addEventListener("pagehide",()=>{if(goingInside||!CAN.hold)return;   // 설정 페이지로 옮겨 가는 중 · 밖에서는 안 보낸다
+  try{navigator.sendBeacon("/api/bye",new Blob([JSON.stringify({token:TOKEN})],{type:"application/json"}));}catch{}});
+(async function hold(){if(!CAN.hold)return;   // 밖에서는 창 살아있음 신호를 보내지 않는다
+  for(;;){try{const r=await fetch("/api/hold",{headers:{"X-Requested-With":"mobiworks","X-MobiWorks-Token":TOKEN},cache:"no-store"});const rd=r.body.getReader();while(!(await rd.read()).done){}}catch{}await new Promise((res)=>setTimeout(res,1000));}})();
+const OUTSIDE=/__firefox__|__gCrWeb|__brave|playlistLongPressed|webkit\.messageHandlers|chrome-extension:|moz-extension:|safari-(?:web-)?extension:/i;
+const mine=(m)=>!OUTSIDE.test(String(m||""));
+window.addEventListener("error",(e)=>{const m=e.message||"";
+  if(!mine(m)){console.warn("바깥 스크립트 오류(무시):",m);return;}
+  toast("오류: "+m);});
+window.addEventListener("unhandledrejection",(e)=>{const m=(e.reason&&e.reason.message)||e.reason||"";
+  if(!mine(m)){console.warn("바깥 스크립트 오류(무시):",m);return;}
+  toast("오류: "+m);});
+const tkey=(s)=>String(s||"").replace(/^악보\s*[:：]\s*/,"").toLowerCase().replace(/[\s\-_·•.,()\[\]{}~!?/\\|:;"'`+*&%$#@^=<>【】「」『』〈〉《》]+/g,"");
+/* 제목에서 「4인합주」 같은 표기를 읽는다. 게임이 주는 악보 자료에는 편성 정보가 없어서
+   제목에 적혀 있을 때만 알 수 있다 (실측 악보함 196곡 중 1곡). 없으면 표시하지 않는다. */
+/* 합주 인원: 사용자가 지정한 값(ens)이 먼저. 없으면 제목에 「N인」이 있을 때만 읽는다.
+   게임은 악보의 편성을 알려 주지 않아서(제목·복사가능·잠김·위치 넷뿐) 직접 적어 두는 값이다. */
+const ensOf=(it)=>{if(it&&it.ens)return Number(it.ens);const m=/(\d+)\s*인/.exec(String((it&&it.title)||it||""));return m?Number(m[1]):0;};
+const ensCls=(n)=>n<=1?"e1":(n<=3?"e2":"e6");
+/* 악기 이름은 **어디서나** 「[바이올린] 폼폼푸린의 스위트 푸딩 바이올린」. 종류는 서버가
+   /api/instruments 의 `type` 으로 주고, 화면은 이 한 함수로만 붙인다 — 목록에 없는 이름은 그대로. */
+const instLabel=(name)=>MFInst.labelOf(name,S.instruments);
+
+let S={all:[],byKey:new Map(),byTitle:new Map(),titleSet:new Set(),lists:[],instruments:[],settings:{},view:{kind:"lib"},q:"",selected:new Set(),
+  queue:[],qi:-1,src:"",qname:"",qnext:null,qgen:0,qrev:0,shuffle:false,repeat:"off",now:null,playing:false,pollT:null,startedAt:0,advancing:false,manualStop:false,gapT:null,switching:false,gen:0,
+  instrument:"",cliOk:false,ens:{on:false,leader:null,reason:"",at:0,players:[]}};
+const libOf=(x)=>x?(S.byKey.get(x.key)||S.byTitle.get(x.title)||null):null;
+function ask(title,def=""){return new Promise((res)=>{$("dlgTitle").textContent=title;$("dlgInput").value=def;$("dlg").returnValue="";$("dlg").onclose=()=>res($("dlg").returnValue==="ok"?$("dlgInput").value.trim():null);$("dlg").showModal();$("dlgInput").select();});}
+$("dlgOk").onclick=()=>$("dlg").close("ok");$("dlgCancel").onclick=()=>$("dlg").close("cancel");$("dlgInput").onkeydown=(e)=>{if(e.key==="Enter")$("dlg").close("ok");};
+function menu(e,items){closeMenu();const m=document.createElement("div");m.className="menu";m.dataset.at=String(performance.now());m.innerHTML=items.map(([t,fn])=>`<div class="${fn?"":"hd"}">${esc(t)}</div>`).join("");[...m.children].forEach((c,i)=>{if(items[i][1])c.onclick=()=>{m.remove();items[i][1]();};});document.body.appendChild(m);
+  const x=Math.min(e.clientX,window.innerWidth-m.offsetWidth-8),y=Math.min(e.clientY,window.innerHeight-m.offsetHeight-8);m.style.left=Math.max(8,x)+"px";m.style.top=Math.max(8,y)+"px";setTimeout(()=>document.addEventListener("click",closeMenu,{once:true}),0);}
+function closeMenu(ev){document.querySelectorAll(".menu").forEach((m)=>{
+  if(ev&&typeof ev.timeStamp==="number"&&ev.timeStamp<=Number(m.dataset.at||0))return;   // 이 메뉴보다 먼저 난 클릭
+  m.remove();});}
+
+/* ── 데이터 ── */
+/* 폰(밖)은 `nocli=1` — PC 가 마지막으로 읽어 둔 상태만 (서버도 밖에는 CLI 를 안 부른다) */
+async function refreshState(){const s=await api(REMOTE?"/api/state?nocli=1":"/api/state");const c=(s&&s.cli)||{};S.cliOk=!!(c.found&&c.pipe==="connected");S.cli=c;
+  $("conn").classList.toggle("off",!S.cliOk);var _ct=S.cliOk?"연결됨":"게임 꺼짐";$("connT").textContent=_ct;$("conn").title=_ct;   /* 점만 보이므로 까닭은 **툴팁**에 남긴다 */
+  $("conn").title=S.cliOk?"CLI 연결됨":"게임을 켜고 CLI 옵션을 켜세요";}
+/* 넷을 **따로** 받는다. 예전에는 하나라도 없으면 전부를 버려,
+   폰에서 설정 하나가 403 이던 날 곡·칩·재생목록·악기가 다 비고 토스트 3초만 남았다.
+   **곡(악보함)만 필수**다 — 없으면 목록 자리에 까닭을 남긴다. 재생목록·악기·설정은 없으면 지금 값(처음엔 빈 값)으로
+   그리고 무엇을 못 받았는지 알린다. */
+async function loadAll(){const [sc,ls,ins,st]=await Promise.all([api("/api/scores"),api("/api/playlists"),api("/api/instruments"),api("/api/settings?nocli=1")]);
+  if(window.MWTheme&&st&&st.settings)MWTheme.fromSettings(st.settings);   // 테마 = 설정 ui_theme (폰은 PC 값을 따른다 · /js/theme.js)
+  if(!sc||!Array.isArray(sc.items)){S.loadErr=(sc&&(sc.message||sc.error))||"응답 없음";
+    if(st&&st.settings&&typeof st.settings==="object"){S.settings=st.settings;opSync();}   // 곡이 없어도 설정은 왔다 — 연출 단추 흐림을 푼다
+    render();
+    toast("서버에서 곡 목록을 받지 못했습니다 — 위의 갱신을 눌러 다시 시도하세요",4000);return;}
+  S.loadErr="";const miss=[];
+  S.all=sc.items;S.byKey=new Map(sc.items.map((i)=>[i.key,i]));S.byTitle=new Map();for(const i of sc.items)if(!S.byTitle.has(i.title))S.byTitle.set(i.title,i);S.titleSet=new Set(sc.items.map((i)=>tkey(i.title)));
+  if(ls&&Array.isArray(ls.playlists))S.lists=ls.playlists;else miss.push("재생목록");
+  if(ins&&Array.isArray(ins.items))S.instruments=ins.items;else miss.push("악기");
+  if(st&&st.settings&&typeof st.settings==="object")S.settings=st.settings;else miss.push("설정");
+  if(miss.length)toast(`일부를 받지 못했습니다 — ${miss.join(" · ")} (위의 갱신을 눌러 다시 시도)`,4000);
+  opSync();
+  setRepeat(S.settings.repeat||"off",false);setShuffle(!!S.settings.shuffle,false);
+  if(S.instrument&&!S.instruments.some((i)=>i.name===S.instrument))S.instrument="";   // 갱신으로 사라진 악기
+  instBoxSync();render();}
+async function listsApi(body){const r=await api("/api/playlists",body);if(r&&r.playlists)S.lists=r.playlists;if(!r||r.ok===false)toast("재생목록 저장 실패: "+(r&&(r.message||r.error)||""));return r;}
+
+/* ── 렌더 ── */
+function viewName(){const v=S.view;
+  if(v.kind==="pl"){const pl=S.lists.find((p)=>p.id===v.id);return pl?pl.name:"재생목록";}
+  return {lib:"전체",recent:"최근",solo:"솔로",ens:"합주",queue:"현재 재생목록"}[v.kind]||"전체";}
+function currentItems(){const v=S.view;let items=S.all;
+  if(v.kind==="queue")return (S.queue||[]).map((x)=>Object.assign({},libOf(x)||{},x));
+  if(v.kind==="pl"){const pl=S.lists.find((p)=>p.id===v.id);items=pl?pl.items.map((it,k)=>({...(libOf(it)||{title:it.title,song:it.title,cleaned:it.title,artist:"",missing:true}),key:it.key,plInst:it.inst,plIndex:k})):[];}
+  if(v.kind==="recent")items=[...S.all.filter((i)=>i.lastPlayed)].sort((a,b)=>b.lastPlayed-a.lastPlayed);
+  if(v.kind==="solo")items=S.all.filter((i)=>ensOf(i)===1);
+  if(v.kind==="ens")items=S.all.filter((i)=>ensOf(i)>=2);
+  if(S.q){const qt=S.q.toLowerCase().split(/\s+/).filter(Boolean);items=items.filter((i)=>qt.every((t)=>(i.norm||"").includes(t.replace(/[\s\-_.]/g,""))||(i.artist||"").toLowerCase().includes(t)||(i.title||"").toLowerCase().includes(t)));}
+  return items;}
+function render(){renderFilters();renderList();renderSel();renderQueue();renderAll();
+  if(dsOpen())detailRender();}   // 곡 상세 시트가 열려 있으면 재생목록 칩 등을 새 값으로
+/* 「▶ 전체 재생」 — 악기 고르기 위, 지금 목록 전체를 대기열로 등록한다.
+   오버레이 상세창의 「전체 재생」(overlay_tk._play_view_all)과 같은 일·같은 서버 길: 지금 보고 있는 목록 **전부**
+   (검색으로 거른 것과 상관없이)를 대기열로 만들고 첫 곡부터 — POST /api/queue = engine.queue_set. */
+function viewAll(){const v=S.view;
+  if(v.kind==="queue")return {items:(S.queue||[]).map((x)=>({key:x.key,title:x.title,inst:x.inst||""})),src:S.src||"queue",name:S.qname||viewName()};
+  const q=S.q;S.q="";let items;try{items=currentItems();}finally{S.q=q;}
+  return {items:items.map((x)=>({key:x.key,title:x.title,inst:x.plInst||""})).filter((x)=>x.key||x.title),
+          src:v.kind==="pl"?"pl:"+v.id:v.kind,name:viewName()};}
+function renderAll(){const {items,name}=viewAll();const n=items.length;
+  $("btnAll").disabled=!n;$("allT").textContent=n?`${name} · ${n}곡`:`${name} — 곡이 없습니다`;}
+async function playViewAll(){const {items,src,name}=viewAll();if(!items.length){toast("재생할 곡이 없습니다",2200);return;}
+  toast(`${name} 전체 재생 — ${items.length}곡`,2200,"ok");await playFrom(items,0,src,name);}
+$("btnAll").onclick=(e)=>{e.stopPropagation();playViewAll();};
+function renderFilters(){const v=S.view,f=$("filters");
+  f.innerHTML=(S.queue&&S.queue.length?`<button class="chip ${v.kind==="queue"?"on":""}" data-v="queue" title="지금 틀고 있는 차례">현재 재생목록 <span class="n mono">${S.queue.length}</span></button>`:"")+
+    `<button class="chip ${v.kind==="lib"?"on":""}" data-v="lib">전체 <span class="n mono">${S.all.length}</span></button>`+
+    `<button class="chip ${v.kind==="recent"?"on":""}" data-v="recent">최근 <span class="n mono">${S.all.filter((i)=>i.lastPlayed).length}</span></button>`+
+    `<button class="chip ${v.kind==="solo"?"on":""}" data-v="solo" title="합주 인원을 1로 지정한 곡">솔로 <span class="n mono">${S.all.filter((i)=>ensOf(i)===1).length}</span></button>`+
+    `<button class="chip ${v.kind==="ens"?"on":""}" data-v="ens" title="합주 인원을 2 이상으로 지정한 곡">합주 <span class="n mono">${S.all.filter((i)=>ensOf(i)>=2).length}</span></button>`;
+  f.querySelectorAll("[data-v]").forEach((b)=>b.onclick=()=>setView({kind:b.dataset.v}));
+  // 재생목록은 알약으로 늘어놓지 않는다 — 많아지면 화면 밖으로 넘쳐서 닿지 않았다.
+  // 오른쪽에 고정된 「목록 N ▾」 한 개로 모은다. 지금 보고 있는 목록이면 그 이름을 보여 준다.
+  const cur=v.kind==="pl"?S.lists.find((x)=>x.id===v.id):null,b=$("plMenu");
+  b.classList.toggle("on",!!cur);
+  b.innerHTML=cur?`<span class="pln">${esc(cur.name)}</span> <span class="n mono">${cur.items.length}</span> ▾`
+                 :`목록 <span class="n mono">${S.lists.length}</span> ▾`;
+  b.onclick=(e)=>plMenu(e);
+  const on=f.querySelector(".chip.on");if(on)on.scrollIntoView({inline:"nearest",block:"nearest"});chipEdges();}
+/* 재생목록 고르기 — 목록을 열고, 지금 보고 있는 목록이면 그 목록에 대한 명령까지 붙인다. */
+function plMenu(e){
+  const v=S.view,cur=v.kind==="pl"?S.lists.find((x)=>x.id===v.id):null;
+  const m=[["재생목록",null]];
+  if(!S.lists.length)m.push(["아직 만든 목록이 없습니다",null]);
+  for(const pl of S.lists)m.push([`${pl.id===(cur&&cur.id)?"● ":"　"}${pl.name} · ${pl.items.length}곡`,()=>setView({kind:"pl",id:pl.id})]);
+  m.push(["+ 새 재생목록 만들기",async()=>{const keys=[...S.selected];const pl=await newList();if(!pl)return;
+    if(keys.length)await listsApi({op:"add",id:pl.id,keys});
+    S.selected.clear();setView({kind:"pl",id:pl.id});
+    toast(keys.length?`「${pl.name}」을 만들고 ${keys.length}곡을 담았습니다`:`「${pl.name}」을 만들었습니다`,2600,"ok");}]);
+  if(cur){
+    m.push([`「${cur.name}」`,null]);
+    m.push(["▶ 전체 재생",()=>playFrom(cur.items.map((it)=>({...it})),0,"pl:"+cur.id,cur.name)]);
+    m.push(["이름 변경",async()=>{const n=await ask("이름 변경",cur.name);if(n===null||!n)return;await listsApi({op:"rename",id:cur.id,name:n});render();}]);
+    m.push(["목록 삭제",async()=>{if(!await MF.ask({title:"목록 삭제",text:`「${cur.name}」을 삭제합니다.`,ok:"삭제",danger:true}))return;await listsApi({op:"delete",id:cur.id});setView({kind:"lib"});}]);
+  }
+  menu(e,m);}
+/* 알약 줄 좌우 굴리기 — 끌어서, 휠로. 오버레이 상세창도 같은 방식이다. */
+function chipEdges(){const f=$("filters");const over=f.scrollWidth>f.clientWidth+1;
+  f.classList.toggle("more-r",over&&f.scrollLeft+f.clientWidth<f.scrollWidth-1);
+  f.classList.toggle("more-l",over&&f.scrollLeft>1);}
+/* 알약 줄 하나에 끌기·휠·가장자리 흐림을 붙인다 — 위쪽 필터 줄과 악기 시트의 악기 탭 줄이 같은 것을 쓴다
+   (악기 탭은 스크롤 막대를 숨겨 두고 굴릴 길이 없었다). */
+function hscrollStrip(f,edges){let down=false,x0=0,sl=0,moved=false;
+  f.addEventListener("pointerdown",(e)=>{
+    if(e.pointerType==="touch")return;        // 알약 줄도 마찬가지 — 손가락은 브라우저가 알아서 민다
+    down=true;moved=false;x0=e.clientX;sl=f.scrollLeft;});
+  f.addEventListener("pointermove",(e)=>{if(!down)return;const dx=e.clientX-x0;
+    if(!moved){if(Math.abs(dx)<4)return;moved=true;f.classList.add("drag");try{f.setPointerCapture(e.pointerId);}catch{}}
+    f.scrollLeft=sl-dx;edges();});
+  const up=()=>{if(!down)return;down=false;f.classList.remove("drag");
+    // 끌고 난 **바로 다음** 클릭만 삼킨다 — 줄 밖에서 손을 떼면 클릭이 안 와서 그대로 남는다 (목록 쪽과 같은 고침)
+    if(!moved)return;
+    const eat=(ev)=>{ev.stopPropagation();ev.preventDefault();};
+    f.addEventListener("click",eat,{capture:true,once:true});
+    setTimeout(()=>f.removeEventListener("click",eat,{capture:true}),300);};
+  f.addEventListener("pointerup",up);f.addEventListener("pointercancel",up);f.addEventListener("pointerleave",up);
+  f.addEventListener("wheel",(e)=>{if(f.scrollWidth<=f.clientWidth+1)return;e.preventDefault();
+    f.scrollLeft+=(Math.abs(e.deltaX)>Math.abs(e.deltaY)?e.deltaX:e.deltaY);edges();},{passive:false});
+  f.addEventListener("scroll",edges);
+  window.addEventListener("resize",edges);}
+function stripEdges(f){return ()=>{const over=f.scrollWidth>f.clientWidth+1;
+  f.classList.toggle("more-r",over&&f.scrollLeft+f.clientWidth<f.scrollWidth-1);
+  f.classList.toggle("more-l",over&&f.scrollLeft>1);};}
+hscrollStrip($("filters"),chipEdges);
+hscrollStrip($("itabs"),stripEdges($("itabs")));
+function setView(v){S.view=v;S.selected.clear();render();$("list").scrollTop=0;}
+/* 곡 번호 — 목록 줄은 「제목 / 아티스트 · 길이」 셋뿐이라 번호를 둘 자리가 없다.
+   그래서 줄에는 그리지 않고 **줄 풍선말(title)** 과 **줄 메뉴 「번호 #0012 복사」** 에만 둔다 (커버 파일 이름을 붙일 때 쓴다). */
+/* 곡 설정 시트(악기·커버·연주 인사·재생목록)의 이름 — 줄 메뉴 맨 위 · 줄 앞 네모 · 펼친 플레이어 제목이 같은 말을 쓴다 */
+const SONG_SET_LABEL="곡 설정 (악기·커버·인사)";
+function songIdOf(it){const x=it&&(Number(it.id)>0?it:S.byKey&&S.byKey.get(it.key));return x&&Number(x.id)>0?Number(x.id):0;}
+function songTag(id){return id>0?"#"+String(id).padStart(4,"0"):"";}
+async function copySongTag(id){const t=songTag(id);
+  try{await navigator.clipboard.writeText(t);toast(`${t} 복사했습니다 — 커버 파일 이름에 쓰세요 (예: ${t.slice(1)}.png)`,3000,"ok");}
+  catch{toast(`곡 번호 ${t}`,4000);}}
+function rowHtml(it,i){const playing=S.now&&S.now.key===it.key&&S.playing;const sel=S.selected.has(it.key);
+  const n=ensOf(it);const inst=it.plInst||it.inst||"";   // 재생목록의 곡별 악기 · 현재 재생목록의 곡별 악기
+  const sub=[it.artist,inst?instLabel(inst):((it.tags&&it.tags[0])||"")].filter(Boolean).join(" · ");
+  return `<div class="row ${sel?"sel":""} ${playing?"playing":""}" data-k="${esc(it.key)}" title="${esc(it.title)}${songIdOf(it)?" · "+songTag(songIdOf(it)):""}">
+    <span class="ens ${n?ensCls(n):"none"}" role="button" tabindex="0" title="${SONG_SET_LABEL}" aria-label="곡 설정">${n?n:`<svg><use href="#ic-scroll"/></svg>`}</span>
+    <span class="txt"><span class="t">${esc(it.missing?"(없음) "+it.title:(it.song||it.cleaned||it.title))}${it.dupNo?` <span style="color:var(--faint3)">#${it.dupNo}</span>`:""}</span>${sub?`<span class="s">${esc(sub)}</span>`:""}</span>
+    <span class="d mono">${it.duration?fmtSec(it.duration):"--:--"}</span></div>`;}
+function renderList(){const items=currentItems();S._items=items;const g=$("list");const st=g.scrollTop;
+  const emptyMsg=S.loadErr?`서버에서 곡 목록을 받지 못했습니다 (${S.loadErr}) — 위의 갱신을 눌러 다시 시도하세요`
+    :!S.all.length?"아직 악보가 없습니다 — 게임을 켜고 위의 갱신을 누르세요"
+    :S.view.kind==="pl"?(S.q?"이 목록에서 찾은 곡이 없습니다":"비어 있음 — 「전체」에서 곡을 눌러 고른 뒤 「+ 담기」")
+    :S.view.kind==="recent"?"최근 재생한 곡이 없습니다":"조건에 맞는 악보가 없습니다";
+  g.innerHTML=items.length?items.map(rowHtml).join(""):`<div id="empty">${emptyMsg}</div>`;g.scrollTop=st;
+  g.querySelectorAll(".row").forEach((t)=>{const k=t.dataset.k;
+    /* 줄 앞 네모를 누르면 **곡 설정** 시트 — 줄 메뉴 맨 위 항목과 같은 openDetail.
+       줄의 고르기(click)·재생(dblclick)으로 번지지 않게 여기서 멈춘다. 줄을 누르는 것은 그대로 고르기다 */
+    const ens=t.querySelector(".ens");
+    ens.onclick=(e)=>{e.stopPropagation();openDetail(k);};
+    ens.ondblclick=(e)=>{e.stopPropagation();e.preventDefault();};
+    ens.onkeydown=(e)=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();e.stopPropagation();openDetail(k);}};
+    t.onclick=()=>{if(S.selected.has(k))S.selected.delete(k);else S.selected.add(k);t.classList.toggle("sel",S.selected.has(k));renderSel();};
+    t.ondblclick=(e)=>{e.preventDefault();S.selected.delete(k);
+      if(S.view.kind==="queue"){playAt(items.findIndex((x)=>x.key===k));return;}
+      const list=items.map((x)=>({key:x.key,title:x.title,inst:x.plInst||""}));
+      playFrom(list,list.findIndex((x)=>x.key===k),S.view.kind==="pl"?"pl:"+S.view.id:S.view.kind,viewName());};
+    t.oncontextmenu=(e)=>{e.preventDefault();const it=S.byKey.get(k)||items.find((x)=>x.key===k);const m=[[it?it.title:k,null],[SONG_SET_LABEL+"…",()=>openDetail(k)],["▶ 이 곡부터 재생",()=>{const list=items.map((x)=>({key:x.key,title:x.title,inst:x.plInst||""}));
+        playFrom(list,list.findIndex((x)=>x.key===k),S.view.kind==="pl"?"pl:"+S.view.id:S.view.kind,viewName());}],["+ 재생목록에 담기",()=>addMenu(e,[k])],["합주 인원 지정…",()=>ensMenu(e,[k],ensOf(it))],
+        ["인사 프리셋…",()=>greetMenu(e,k,it)]];
+      {const sid=songIdOf(it||{key:k});if(sid)m.push([`번호 ${songTag(sid)} 복사`,()=>copySongTag(sid)]);
+        if(sid)m.push(["커버 고르기…",()=>pickCover(it||{key:k,title:k})]);}   // 밖(폰)에서도 — 있는 그림 중에서 고르기 (올리기는 감춘다)
+      if(S.view.kind==="pl"){m.push(["이 곡 악기 지정…",()=>plInstPick(S.view.id,k,it)]);m.push(["목록에서 제거",async()=>{await listsApi({op:"remove",id:S.view.id,keys:[k]});render();}]);}
+      if(S.view.kind==="queue"){const q=S.queue.find((x)=>x.key===k);if(q)m.push(["이 곡 악기 지정…",()=>queueInstPick(q)]);}
+      menu(e,m);};});}
+function renderSel(){const n=S.selected.size;$("selbar").hidden=!n;
+  // 줄의 「고름」 표시는 **개수와 상관없이** 늘 맞춘다 — 예전에는 여기 위의 return 때문에
+  // 「해제」를 눌러도 줄이 계속 골라진 것처럼 보였다.
+  document.querySelectorAll(".row").forEach((t)=>t.classList.toggle("sel",S.selected.has(t.dataset.k)));
+  document.body.classList.toggle("selon",!!n);   // 막대가 떠 있는 동안 목록 끝에 여백 (CSS)
+  if(!n)return;
+  $("selN").textContent=`선택 ${n}`;const inPl=S.view.kind==="pl";$("bRemove").hidden=!inPl;$("bUp").hidden=$("bDown").hidden=!(inPl&&n===1);}
+const selItems=()=>(S._items||[]).filter((i)=>S.selected.has(i.key));
+/* 목록에서 **끌어서 여러 곡 고르기**.
+   누른 줄에서 6px 넘게 움직이면 고르기가 시작되고, 지나간 줄까지가 한 묶음으로 잡힌다.
+   처음 누른 줄이 이미 골라져 있었으면 지나가는 줄을 **푼다** (같은 손짓으로 풀기도 된다).
+   끌고 나면 그 클릭은 삼킨다 — 안 그러면 손을 떼는 순간 처음 줄이 도로 뒤집힌다. */
+(function(){const g=$("list");let on=false,moved=false,y0=0,i0=-1,mode=true,base=null,rows=[];
+  const rowAt=(x,y)=>{const e=document.elementFromPoint(x,y);return e&&e.closest?e.closest(".row"):null;};
+  g.addEventListener("pointerdown",(e)=>{
+    if(e.pointerType==="touch")return;        // 손가락은 화면을 내리려는 것이다 — 고르기로 치지 않는다
+    if(e.button!==0)return;const r=rowAt(e.clientX,e.clientY);if(!r)return;
+    rows=[...g.querySelectorAll(".row")];i0=rows.indexOf(r);if(i0<0)return;
+    on=true;moved=false;y0=e.clientY;mode=!S.selected.has(r.dataset.k);base=new Set(S.selected);});
+  g.addEventListener("pointermove",(e)=>{if(!on)return;
+    if(!moved){if(Math.abs(e.clientY-y0)<6)return;moved=true;g.classList.add("dragsel");try{g.setPointerCapture(e.pointerId);}catch{}}
+    const r=rowAt(e.clientX,e.clientY);const i1=r?rows.indexOf(r):-1;if(i1<0)return;
+    const a=Math.min(i0,i1),b=Math.max(i0,i1);
+    S.selected=new Set(base);
+    for(let i=a;i<=b;i++){const k=rows[i]&&rows[i].dataset.k;if(!k)continue;if(mode)S.selected.add(k);else S.selected.delete(k);}
+    renderSel();});
+  const up=()=>{if(!on)return;on=false;g.classList.remove("dragsel");
+    // 끌고 난 **바로 다음** 클릭만 삼킨다. 예전에는 once 처리기를 걸어 두기만 해서, 목록 밖에서 손을
+    // 떼면(클릭이 안 온다) 그대로 무장된 채 남아 **나중에 누른 줄의 클릭을 먹었다**.
+    if(!moved)return;
+    const eat=(ev)=>{ev.stopPropagation();ev.preventDefault();};
+    g.addEventListener("click",eat,{capture:true,once:true});
+    setTimeout(()=>g.removeEventListener("click",eat,{capture:true}),300);};
+  g.addEventListener("pointerup",up);g.addEventListener("pointercancel",up);g.addEventListener("pointerleave",up);})();
+/* **폰에서 줄 메뉴 — 길게 누르기**. 아이폰 사파리는 길게 눌러도 `contextmenu` 를
+   내지 않는다 — 그래서 줄 메뉴(곡 설정·이 곡부터 재생·담기·인원·인사·커버)가 폰에서는 **닿을 길이 없었다**
+   (PC 는 오른쪽 단추). 손가락으로 500ms 누르고 있으면 같은 메뉴를 연다. 움직이면(스크롤) 취소.
+   메뉴가 뜬 뒤 손을 떼며 나는 click 은 삼킨다 — 안 그러면 그 줄의 고름이 뒤집히고 메뉴도 바로 닫힌다.
+   안드로이드는 제 `contextmenu` 도 내므로, 우리가 이미 열었으면 그것은 삼킨다 (두 번 열리지 않게). */
+(function(){const g=$("list");let tm=0,x0=0,y0=0,row=null,fired=false;
+  const stop=()=>{if(tm){clearTimeout(tm);tm=0;}};
+  g.addEventListener("pointerdown",(e)=>{if(e.pointerType!=="touch")return;
+    const r=e.target&&e.target.closest?e.target.closest(".row"):null;if(!r)return;
+    row=r;x0=e.clientX;y0=e.clientY;fired=false;stop();
+    tm=setTimeout(()=>{tm=0;if(!row||!row.oncontextmenu)return;fired=true;
+      /* 손을 떼며 나는 click 은 **문서 전체에서** 한 번 삼킨다 — 메뉴가 손가락 자리에 뜨므로 그 click 은 줄이 아니라
+         메뉴 위에 떨어진다(좁은 폭 360 실측: 메뉴가 뜨자마자 닫혔다 · 운 나쁘면 첫 항목이 눌린다) */
+      const eat=(ev)=>{fired=false;ev.stopPropagation();ev.preventDefault();};
+      document.addEventListener("click",eat,{capture:true,once:true});
+      setTimeout(()=>document.removeEventListener("click",eat,{capture:true}),1500);
+      row.oncontextmenu({preventDefault(){},clientX:x0,clientY:y0,target:row});},500);});
+  g.addEventListener("pointermove",(e)=>{if(tm&&(Math.abs(e.clientX-x0)>8||Math.abs(e.clientY-y0)>8))stop();});
+  g.addEventListener("pointerup",stop);g.addEventListener("pointercancel",stop);
+  g.addEventListener("contextmenu",(e)=>{if(!fired)return;e.stopPropagation();e.preventDefault();},true);})();
+$("bClear").onclick=()=>{S.selected.clear();renderSel();};
+$("bPlay").onclick=()=>{const list=selItems().map((it)=>({key:it.key,title:it.title,inst:it.plInst||""}));S.selected.clear();renderSel();
+  if(list.length)playFrom(list,0,"picked","고른 "+list.length+"곡");};
+$("bAdd").onclick=(e)=>addMenu(e,selItems().map((i)=>i.key));
+$("bEns").onclick=(e)=>ensMenu(e,selItems().map((i)=>i.key),0);
+$("bRemove").onclick=async()=>{await listsApi({op:"remove",id:S.view.id,keys:[...S.selected]});S.selected.clear();render();};
+async function move(dir){const pl=S.lists.find((p)=>p.id===S.view.id);if(!pl)return;const keys=pl.items.map((x)=>x.key);const k=[...S.selected][0];const i=keys.indexOf(k);const j=i+dir;if(i<0||j<0||j>=keys.length)return;keys.splice(j,0,keys.splice(i,1)[0]);await listsApi({op:"reorder",id:pl.id,items:keys});render();}
+$("bUp").onclick=()=>move(-1);$("bDown").onclick=()=>move(1);
+/* 새 재생목록 하나. 이름을 묻고 만든 뒤 **새로 생긴 것**을 찾아 돌려준다
+   (예전엔 목록의 마지막 것을 썼는데, 서버가 순서를 바꾸면 엉뚱한 목록에 담긴다). */
+async function newList(){
+  const name=await ask("새 재생목록 이름",nextListName());
+  if(name===null)return null;
+  const before=new Set(S.lists.map((p)=>p.id));
+  const r=await listsApi({op:"create",name:name||nextListName()});
+  if(!r||r.ok===false)return null;
+  return S.lists.find((p)=>!before.has(p.id))||S.lists.at(-1)||null;}
+function nextListName(){const base="새 재생목록";const have=new Set(S.lists.map((p)=>p.name));if(!have.has(base))return base;for(let i=2;i<999;i++)if(!have.has(`${base} ${i}`))return `${base} ${i}`;return base;}
+function addMenu(e,keys){if(!keys.length)return;menu(e,[[`${keys.length}곡 담기`,null]].concat(S.lists.map((p)=>[`${p.name} (${p.items.length})`,async()=>{await listsApi({op:"add",id:p.id,keys});S.selected.clear();render();toast(`「${p.name}」에 담았습니다`,2500,"ok");}])).concat([["+ 새 재생목록 만들어 담기",async()=>{const pl=await newList();if(!pl)return;
+    await listsApi({op:"add",id:pl.id,keys});S.selected.clear();setView({kind:"pl",id:pl.id});
+    toast(`「${pl.name}」을 만들고 ${keys.length}곡을 담았습니다`,2600,"ok");}]]));}
+/* 곡별 인사 프리셋 — 이 곡을 틀 때 쓸 시작 인사를 지정한다 (없으면 기본 프리셋).
+   프리셋 자체는 별도 페이지(greet.html)에서 만든다. */
+/* 곡별 인사 지정 — **화면으로 넘어간다** (설정과 같은 모양으로).
+
+   예전에는 여기서 작은 메뉴를 띄워 프리셋을 골랐다. 그 메뉴는 폰에서 화면 절반을
+   가리고, 목록이 길면 잘리고, 「만들기·편집」을 누르면 어차피 화면이 넘어갔다 —
+   **같은 일을 두 가지 모양으로** 하고 있었던 셈이다.
+
+   곡 정보는 주소에 싣는다. 제목은 보여 주기용이고 판단은 `key` 로 한다. */
+function greetMenu(e, key, it) {
+  var q = "?song=" + encodeURIComponent(key);
+  var t = it ? (it.song || it.cleaned || it.title || "") : "";
+  if (t) q += "&title=" + encodeURIComponent(t);
+  goingInside = true;
+  location.href = "/folio/greet.html" + q;
+}
+/* 합주 인원 지정 — 게임이 안 알려 주는 값이라 사용자가 적는다. 여러 곡을 한 번에 지정할 수 있다. */
+function ensMenu(e,keys,cur){if(!keys.length)return;
+  const set=async(n)=>{const r=await api("/api/ens",{keys,ens:n});
+    if(!r||r.ok===false){toast("인원 지정 실패: "+((r&&(r.message||r.error))||""));return;}
+    for(const k of keys){const it=S.byKey.get(k);if(it)it.ens=n||null;}
+    S.selected.clear();render();toast(n?`${keys.length}곡을 ${n}인으로 지정했습니다`:`${keys.length}곡의 인원 지정을 지웠습니다`,2500,"ok");};
+  menu(e,[[`합주 인원 (${keys.length}곡)`,null],["1인 · 솔로",()=>set(1)],["2인",()=>set(2)],["3인",()=>set(3)],
+    ["4인",()=>set(4)],["5인",()=>set(5)],["6인",()=>set(6)],["직접 입력…",async()=>{const v=await ask("합주 인원 (1~12)",String(cur||""));
+      if(v===null)return;const n=Math.max(0,Math.min(12,parseInt(v,10)||0));set(n);}],["지정 지우기",()=>set(0)]]);}
+
+/* ── 곡별 악기 ──
+   엔진은 재생목록 항목마다 `inst` 를 들고 있고, 대기열도 곡마다 `inst` 를 들고 재생할 때 그 악기로 바꿔 든다
+   (`play(title, inst)`). 화면에서 그 값을 **적는 자리**가 이것이다 — 세 길이 한 시트(pickInst)를 쓴다:
+     · 현재곡 칸의 악기 단추 = **지금 곡에 저장** (/api/queue/inst — 대기열이 재생목록에서 왔으면 그 목록에도)
+     · 줄의 「이 곡 악기 지정…」 = 재생목록 항목(set_inst) · 현재 재생목록 항목(/api/queue/inst)
+     · 펼친 플레이어의 다음 곡 줄을 누르면 그 곡
+   예전 모양(옛 모비폴리오)은 현재곡 칸이 〈select〉 였고 그 값은 「장착」에만 쓰였다 — 곡에 저장되지 않았다. */
+const curItem=()=>(S.qi>=0&&S.queue[S.qi])?S.queue[S.qi]:null;
+function instBoxSync(){const it=curItem();let t;const pin=S.settings.inst_pin||"";
+  $("instPin").hidden=!pin;$("instBtn").classList.toggle("pinned",!!pin);
+  if(pin){$("instT").textContent=instLabel(pin);
+    $("instBtn").title=`악기 고정 중 — 모든 곡을 ${instLabel(pin)} 로 재생합니다 (누르면 목록 · 핀을 끄면 풀립니다)`;return;}
+  if(it&&it.inst)t=instLabel(it.inst);
+  else if(!it&&S.instrument)t=instLabel(S.instrument);
+  else if(S.settings.default_inst)t=`기본 · ${instLabel(S.settings.default_inst)}`;
+  else t=S.instSeen?`그대로 · ${instLabel(S.instSeen)}`:"악기 그대로";
+  $("instT").textContent=t;
+  $("instBtn").title=it?`「${it.song||it.title}」에 쓸 악기 — 누르면 목록이 올라옵니다 (이 곡에 저장)`:"장착할 악기 — 누르면 목록이 올라옵니다";}
+/* 악기 고르기 시트. 브라우저 기본 〈select〉 는 목록이 미니 창을 덮고 밖으로 삐져나왔다 —
+   앱 안에서 스크롤되는 시트로 바꿨다. 양식은 **오버레이 악기 고르기와 같다**:
+   종류 탭 · 검색(낱말 전부 · 접두 제외 — MFPick) · 「장착」 · 고정. 곡에 저장하는 길(곡별 악기)이면
+   첫 줄에 「기본」(설정의 기본 악기, 없으면 게임에 든 것 그대로)이 붙는다.
+   footer=true 는 발의 악기 칸에서 연 것 — 고정 중이면 고른 악기가 곧 고정 악기가 된다 (오버레이와 같다). */
+let instPickCb=null;
+const IP={fam:MFPick.ALL,q:"",hi:-1,cur:"",footer:false,list:[]};
+function pickInst({kick,title,cur,onPick,footer}){
+  instPickCb=onPick||null;IP.cur=cur||"";IP.footer=!!footer;IP.q="";IP.hi=-1;$("iq").value="";
+  $("ikick").textContent=kick||"악기";$("iT").textContent=title||"";
+  IP.fam=MFPick.validTab(S.instruments,IP.fam);
+  const gold=instGold();if(gold&&!MFPick.filter(S.instruments,IP.fam,"").includes(gold))IP.fam=MFPick.ALL;   // 지금 악기가 이 탭에 없으면 「전체」
+  renderInstSheet(true);
+  $("iscrim").hidden=false;$("isheet").classList.add("open");document.body.classList.add("isheeton");
+  if(!REMOTE)setTimeout(()=>{try{$("iq").focus({preventScroll:true});}catch{}},60);}   // PC 에서만 — 폰은 자판이 시트를 덮는다
+/* 금색으로 보일 「지금 악기」 — 발에서 연 것이고 고정 중이면 고정한 악기 */
+function instGold(){const pin=S.settings.inst_pin||"";return IP.footer&&pin?pin:IP.cur;}
+function renderInstSheet(scroll){
+  const items=S.instruments,pin=S.settings.inst_pin||"",gold=instGold();
+  $("itabs").innerHTML=MFPick.tabs(items).map(([n,c])=>`<button class="chip ${n===IP.fam?"on":""}" data-f="${esc(n)}">${esc(n)} <span class="n mono">${Number(c)}</span></button>`).join("");
+  try{const t=$("itabs");const on=t.querySelector(".chip.on");if(on)on.scrollIntoView({inline:"nearest",block:"nearest"});stripEdges(t)();}catch{}   // 고른 탭이 보이게 · 가장자리 흐림 갱신 (그리기 자체와는 무관 — 실패해도 목록은 뜬다)
+  $("itabs").querySelectorAll("[data-f]").forEach((b)=>b.onclick=()=>{IP.fam=b.dataset.f;IP.hi=-1;renderInstSheet(false);$("ilist").scrollTop=0;});
+  const list=IP.list=MFPick.filter(items,IP.fam,IP.q);
+  $("ilist").innerHTML=instRowsHtml(list,items,pin,gold);
+  $("ilist").querySelectorAll(".irow[data-n]").forEach((r)=>r.onclick=()=>instChoose(r.dataset.n));
+  $("iN").textContent=`${list.length} / ${items.length}`;
+  $("iPin").classList.toggle("on",!!pin);
+  $("iPin").title=pin?`악기 고정 중 — ${instLabel(pin)} · 누르면 풉니다`:"악기 고정 — 켜 두면 곡·기본 악기와 상관없이 이 악기로 재생합니다";
+  if(scroll){const on=$("ilist").querySelector(".irow.on");if(on)on.scrollIntoView({block:"center"});}
+  else if(IP.hi>=0){const r=$("ilist").querySelector(".irow.hi");if(r)r.scrollIntoView({block:"nearest"});}}
+/* 시트의 줄들 — 「기본」(곡별 지정) · 악기 줄([종류] 접두 · 금색 = 지금 악기 · 고정 핀 · 장착 배지) · 빈 목록 안내.
+   밖에서 온 글자(악기 이름·종류)는 전부 esc 를 지난다. */
+function instRowsHtml(list,items,pin,gold){
+  const byName=new Map(items.map((i)=>[i.name,i]));
+  const showDef=!(IP.footer&&pin)&&!IP.q.trim();   // 「기본」 줄 (검색 중이 아니면 어느 탭에서나) — 고정 중인 발에서는 뜻이 없다
+  const defT=S.settings.default_inst?`기본 · ${instLabel(S.settings.default_inst)}`:"기본 · 악기 그대로 (설정에 기본 악기 없음)";
+  let h=showDef?`<div class="irow def ${gold?"":"on"}" data-n=""><span class="chk">${gold?"":"●"}</span><span class="nm">${esc(defT)}</span></div>`:"";
+  h+=list.map((name,k)=>{const i=byName.get(name)||{name};const on=name===gold;const [kd,bare]=MFPick.split(i);
+    return `<div class="irow ${on?"on":""} ${k===IP.hi?"hi":""}" data-n="${esc(name)}"><span class="chk">${on?"●":""}</span>`
+      +(kd?`<span class="kd">[${esc(kd)}]</span>`:"")+`<span class="nm">${esc((i.cliBroken?"⚠ ":"")+bare)}</span>`
+      +(name===pin?'<span class="pn" title="고정한 악기"><svg><use href="#ic-pin"/></svg></span>':"")
+      +(i.equipped?'<span class="bd">장착</span>':"")+(i.cliBroken?'<span class="bd warn">이름 끝 공백</span>':"")+"</div>";}).join("");
+  if(!list.length)h+=`<div class="irow def"><span class="chk"></span><span class="nm">${items.length?"검색에 맞는 악기가 없습니다":"악기 목록이 비어 있습니다 — 게임을 켜고 갱신을 누르세요"}</span></div>`;
+  return h;}
+function instChoose(name){const cb=instPickCb,footer=IP.footer,pin=S.settings.inst_pin||"";closeInst();
+  if(footer&&pin&&name){if(name!==pin)setPin(name);return;}   // 고정 중에 고르면 고정이 그 악기로 옮겨 간다
+  if(cb)cb(name);}
+/* 시트 안에서 「지금 고른」 악기 — ↑↓ 로 고른 줄 → 금색(지금 악기) → 발의 칸에 고른 것 → 게임에 든 것 */
+function instSheetPick(){return (IP.hi>=0&&IP.list[IP.hi])||instGold()||S.instrument||S.instSeen||"";}
+function closeInst(){instPickCb=null;$("isheet").classList.remove("open");$("iscrim").hidden=true;document.body.classList.remove("isheeton");
+  try{$("iq").blur();}catch{}}
+$("iq").oninput=()=>{IP.q=$("iq").value;IP.hi=IP.q.trim()?0:-1;renderInstSheet(false);$("ilist").scrollTop=0;};
+$("iq").onkeydown=(e)=>{const n=IP.list.length;
+  if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();IP.hi=MFPick.move(IP.hi<0?(e.key==="ArrowDown"?-1:0):IP.hi,n,e.key==="ArrowDown"?1:-1);renderInstSheet(false);}
+  else if(e.key==="Enter"){e.preventDefault();if(n&&IP.hi>=0)instChoose(IP.list[MFPick.move(IP.hi,n,0)]);}
+  else if(e.key==="Escape"){e.preventDefault();e.stopPropagation();closeInst();}};
+$("iEquip").onclick=()=>{const name=S.settings.inst_pin||instSheetPick();closeInst();equipName(name);};
+$("iPin").onclick=()=>{const pin=S.settings.inst_pin||"";
+  if(pin){setPin("");}
+  else{const name=instSheetPick();if(!name){toast("고정할 악기를 먼저 고르세요",2500);return;}setPin(name);}
+  if($("isheet").classList.contains("open"))renderInstSheet(false);};
+/* 악기 고정 — 서버 설정 `inst_pin` 하나가 원본이다 (오버레이의 고정 단추도 같은 값을 쓴다).
+   악기를 바꿔 드는 명령은 여기서 부르지 않는다 — 다음 곡을 틀 때 서버 play() 가 한 번 바꿔 든다. */
+function setPin(name){name=name||"";S.settings.inst_pin=name;S.cfgHold=Date.now()+1500;instBoxSync();
+  api("/api/settings",{settings:{inst_pin:name}}).then((r)=>{if(r&&r.settings){S.settings.inst_pin=r.settings.inst_pin||"";instBoxSync();}
+    else toast("악기 고정 저장 실패: "+((r&&(r.message||r.error))||""));}).catch(()=>{});
+  toast(name?`악기 고정 — 모든 곡을 ${instLabel(name)} 로`:"악기 고정 해제 — 곡마다 정한 악기·기본 악기로",2600,"ok");}
+$("iscrim").onclick=closeInst;
+/* 커버 고르기 시트 — 곡마다 커버를 따로 고른다 (기본 커버 또는 내가 넣은 이미지). 칸: 「번호대로」(자동) · 앱 기본 · 내 이미지(`covers/mine/` 의 그림).
+   내 이미지가 쌓이면 「내 이미지 관리 ›」(covers.html)에서 어느 곡이 쓰는지 보고 안 쓰는 것을 지운다.
+   누르면 곧바로 저장한다 — 연출은 다음 판에 새 주소(`?v=`)로 그 그림을 받는다. 「내 이미지 추가…」는 파일을 골라 서버의
+   커버 폴더에 올린 뒤 그것을 고른다. 브라우저 기본 창(prompt·confirm)은 쓰지 않는다. */
+let coverFor=null;   // 지금 시트가 고르고 있는 곡 {key,title,id}
+/* 그림 주소 → `<img>` 속성. 밖(폰)에서는 PC 의 그림을 쪽지 머리로 받아 넣는다 (net.js `imgAttr`·`hydrate`) */
+function imgTag(url,extra){const a=MF.imgAttr(url);
+  return `<img src="${esc(a.src)}"${a.data?` data-mfsrc="${esc(a.data)}"`:""} alt=""${extra||""}>`;}
+function coverCellHtml(value,url,label,cur){const on=value===cur;
+  return `<button class="ccell ${on?"on":""}" data-v="${esc(value)}" title="${esc(label)}">${imgTag(url,' loading="lazy" decoding="async"')}<span class="nm">${esc(label)}</span>${on?'<span class="ck">✓</span>':""}</button>`;}
+function coversHtml(d,cur){const sid=songIdOf(coverFor);
+  /* 「번호대로」 칸은 그 곡이 자동으로 받는 그림을 그대로 보인다 — 대개 곡 제목·아티스트로 그린 생성 커버 */
+  const a=d.auto&&d.auto.url?d.auto:null,aw=a?({gen:"생성",own:"번호 파일",default:"내 기본 풀"}[a.where]||""):"";
+  const auto=a?`<button class="ccell auto img ${cur?"":"on"}" data-v="" title="번호대로 (자동)${aw?" · "+aw:""}">${imgTag(a.url,' decoding="async"')}<span class="nm"><b>번호대로</b>${aw?" · "+esc(aw):""}</span>${cur?"":'<span class="ck">✓</span>'}</button>`
+    :`<button class="ccell auto ${cur?"":"on"}" data-v=""><b>번호대로</b><small>자동 · ${esc(songTag(sid))}</small>${cur?"":'<span class="ck">✓</span>'}</button>`;
+  const mine=(d.mine||[]).map((c)=>coverCellHtml(c.value,c.url,c.name,cur)).join("");
+  return `<div class="cgrid">${auto}</div>`
+    +`<div class="csec">기본 커버</div><div class="cgrid">${(d.defaults||[]).map((c)=>coverCellHtml(c.value,c.url,c.name.replace(/^\d+-|\.\w+$/g,""),cur)).join("")}</div>`
+    +`<div class="csec">내 이미지</div>`+(mine?`<div class="cgrid">${mine}</div>`:`<div class="csec" style="letter-spacing:0">${REMOTE?"아직 없습니다 — PC 에서 올린 그림 중에서 고릅니다":"아직 없습니다 — 「내 이미지 추가…」로 올리거나 커버 폴더의 mine 폴더에 그림을 넣으세요"}</div>`)
+    +onlineHtml();}
+/* 「온라인에서 찾기」 — 선택 기능. **사람이 「찾기」를 누를 때만** 이 곡 하나를
+   찾는다 (앱이 알아서 모으지 않는다). 후보를 눌러 고르면 서버가 그 한 장을 이 PC 의 covers/mine/ 에 받고 그 곡의 커버로 고른다.
+   출처(Apple Music · Deezer)와 원래 페이지를 함께 적고, 받은 그림은 백업·공유에 넣지 않는다. */
+let ONL={q:"",items:null,msg:"",bad:false,busy:"",key:""};
+function onlineQuery(){const x=coverFor&&(libOf(coverFor)||coverFor);if(!x)return"";
+  return [x.song||x.cleaned||x.title||x.key||"",x.artist||""].filter(Boolean).join(" ");}
+function onlineHtml(){if(REMOTE||!coverFor)return"";
+  if(ONL.key!==coverFor.key)ONL={q:onlineQuery(),items:null,msg:"",bad:false,busy:"",key:coverFor.key};
+  const cells=(ONL.items||[]).map((c,i)=>{const th=safeThumb(c.thumb),link=safeLink(c.link);const t=th?`url('${th}')`:"none";
+    return `<div class="ocell${ONL.busy===c.full?" busy":""}" role="button" tabindex="0" data-o="${i}" style="--t:${esc(t)}" title="${esc([c.title,c.artist,c.album].filter(Boolean).join(" · "))}">`
+      +`<div class="bg"></div><div class="sqi"></div><span class="src">${esc(c.source==="itunes"?"Apple":"Deezer")}</span>`
+      +(link?`<a href="${esc(link)}" target="_blank" rel="noopener noreferrer" title="${esc(c.sourceName)} 에서 보기">↗</a>`:"")
+      +`<div class="tx"><b>${esc(c.title)}</b><span>${esc(c.artist)}</span><span>${esc(c.album)}</span></div></div>`;}).join("");
+  return `<div class="csec">온라인에서 찾기</div>`
+    +`<div class="conl"><input id="cOq" value="${esc(ONL.q)}" placeholder="제목 아티스트" spellcheck="false"><button class="sm" id="cOgo"${ONL.busy==="search"?" disabled":""}>${ONL.busy==="search"?"찾는 중…":"찾기"}</button></div>`
+    +`<div class="cnote">개인 감상용입니다 · 출처 표시 · 백업·공유에 넣지 않습니다</div>`
+    +(ONL.msg?`<div class="cmsg${ONL.bad?" bad":""}">${esc(ONL.msg)}</div>`:"")
+    +(cells?`<div class="cgrid og">${cells}</div>`:"");}
+async function onlineSearch(){const f=coverFor;if(!f||ONL.busy)return;
+  ONL.q=($("cOq")&&$("cOq").value.trim())||onlineQuery();ONL.busy="search";ONL.msg="";ONL.bad=false;renderCovers(S.coverD,S.coverCur);
+  const r=await api("/api/covers/search",{key:f.key,id:f.id,q:ONL.q});
+  if(coverFor!==f)return;
+  ONL.busy="";
+  if(!r||r.ok===false){ONL.items=[];ONL.msg=(r&&r.message)||"찾지 못했습니다 — 인터넷 연결을 확인해 주세요.";ONL.bad=true;}
+  else{ONL.items=r.items||[];ONL.msg=ONL.items.length?`${ONL.items[0].sourceName} 에서 ${ONL.items.length}장 — 눌러서 고르면 이 PC 에 받아 커버로 씁니다`:"찾은 그림이 없습니다 — 검색어를 바꿔 보세요.";}
+  renderCovers(S.coverD,S.coverCur);}
+async function onlineFetch(c){const f=coverFor;if(!f||ONL.busy)return;
+  ONL.busy=c.full;ONL.msg="받는 중…";ONL.bad=false;renderCovers(S.coverD,S.coverCur);
+  const r=await api("/api/covers/fetch",{key:f.key,id:f.id,url:c.full,source:c.source});
+  if(coverFor!==f)return;
+  ONL.busy="";
+  if(!r||r.ok===false){ONL.msg=(r&&r.message)||"받지 못했습니다.";ONL.bad=true;renderCovers(S.coverD,S.coverCur);return;}
+  const it=S.byKey.get(f.key);if(it){it.coverSel=r.song.cover;it.coverUrl=r.song.coverUrl;}
+  S.coverD=Object.assign({},S.coverD,{mine:r.mine||S.coverD.mine,defaults:r.defaults||S.coverD.defaults,auto:r.auto||S.coverD.auto});
+  S.coverCur=r.value;ONL.msg=`받았습니다 — 출처: ${c.sourceName} · 다음 연출부터 이 그림이 나옵니다`;
+  renderCovers(S.coverD,S.coverCur);
+  const on=$("cbody").querySelector(".ccell.on");if(on)on.scrollIntoView({block:"nearest"});
+  toast(`「${f.title}」 커버를 온라인 그림으로 바꿨습니다 (출처: ${c.sourceName})`,2800,"ok");}
+function renderCovers(d,cur){S.coverD=d;S.coverCur=cur;$("cbody").innerHTML=coversHtml(d,cur);MF.hydrate($("cbody"));
+  $("cbody").querySelectorAll(".ccell[data-v]").forEach((b)=>b.onclick=()=>setCover(b.dataset.v));
+  const go=$("cOgo");if(go)go.onclick=onlineSearch;
+  const oq=$("cOq");if(oq)oq.onkeydown=(e)=>{if(e.key==="Enter"){e.preventDefault();onlineSearch();}if(e.key!=="Escape")e.stopPropagation();};
+  $("cbody").querySelectorAll(".ocell[data-o]").forEach((el)=>{const c=(ONL.items||[])[Number(el.dataset.o)];if(!c)return;
+    el.onclick=(e)=>{if(e.target.closest("a"))return;onlineFetch(c);};
+    el.onkeydown=(e)=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onlineFetch(c);}};});}
+async function pickCover(it){const x=libOf(it)||it;coverFor={key:x.key,title:x.title,id:songIdOf(x)};
+  $("cT").textContent=(x.song||x.cleaned||x.title||x.key)+"  "+songTag(coverFor.id);
+  $("cbody").innerHTML='<div class="csec">불러오는 중…</div>';
+  $("cfoot").hidden=REMOTE;   // 올리기·내 이미지 관리 = 이 PC 의 폴더 (밖에서는 있는 그림 중에서 고르기만)
+  $("cscrim").hidden=false;$("csheet").classList.add("open");document.body.classList.add("isheeton");
+  const d=await api("/api/covers"+(coverFor.id?"?id="+Number(coverFor.id):""));   // ?id= — 「번호대로」 칸에 그 곡이 자동으로 받는 그림
+  if(!d||d.ok===false){$("cbody").innerHTML=`<div class="csec">커버 목록을 못 받았습니다: ${esc((d&&(d.message||d.error))||"")}</div>`;return;}
+  S.coverMax=Number(d.maxUpload)||8*1024*1024;renderCovers(d,x.coverSel||"");}
+function closeCover(){coverFor=null;$("csheet").classList.remove("open");$("cscrim").hidden=true;document.body.classList.remove("isheeton");
+  detailRefresh();}   // 곡 상세 시트에서 열었으면 그 「커버」 줄을 새 값으로
+$("cscrim").onclick=closeCover;
+async function setCover(value){const f=coverFor;if(!f)return;
+  const r=await api("/api/songs",{op:"cover",key:f.key,cover:value});
+  if(!r||r.ok===false){toast("커버를 저장하지 못했습니다: "+((r&&(r.message||r.error))||""));return;}
+  const it=S.byKey.get(f.key);if(it){it.coverSel=r.song.cover;it.coverUrl=r.song.coverUrl;}
+  closeCover();toast(value?`「${f.title}」 커버를 바꿨습니다 — 다음 연출부터`:`「${f.title}」 커버를 번호대로(자동) 되돌렸습니다`,2800,"ok");}
+$("cAdd").onclick=()=>$("cFile").click();
+$("cManage").onclick=(e)=>{e.preventDefault();goingInside=true;location.href="/folio/covers.html";};   // 설정 가기와 같은 화면 전환
+$("cFile").onchange=async()=>{const file=$("cFile").files[0];$("cFile").value="";if(!file||!coverFor)return;
+  const max=S.coverMax||8*1024*1024;
+  if(!/^image\/(png|jpeg|webp|gif)$/.test(file.type)){toast("그림 파일만 올릴 수 있습니다 (png · jpg · webp · gif)");return;}
+  if(file.size>max){toast(`파일이 너무 큽니다 — ${Math.round(max/1048576)}MB 까지`);return;}
+  const b=$("cAdd");b.disabled=true;$("cHint").textContent="올리는 중…";
+  try{
+    /* `api()` 를 안 타는 날것 fetch 라 **접두어를 직접 붙인다** (설정 화면의 영상 올리기와 같은 이유) */
+    const r=await fetch("/api/folio/covers/upload?name="+encodeURIComponent(file.name),
+      {method:"POST",headers:{"Content-Type":"application/octet-stream","X-Requested-With":"mobiworks","X-MobiWorks-Token":TOKEN},body:file});
+    const j=await r.json().catch(()=>null);
+    if(!j||j.ok===false){toast("올리지 못했습니다: "+((j&&(j.message||j.error))||r.status));return;}
+    await setCover(j.value);
+  }finally{b.disabled=false;$("cHint").textContent="png · jpg · webp · gif · 8MB 까지 · 1000×1420 권장";}};
+/* 대기열의 한 곡에 저장 — 서버가 대기열을 하나만 들고 있으므로 거기 적는다 (오버레이도 같은 값을 본다) */
+async function saveQueueInst(it,name){const r=await api("/api/queue/inst",{key:it.key,inst:name});
+  if(!r||r.ok===false){toast("악기 저장 실패: "+((r&&(r.message||r.error))||""));return;}
+  S.queue=r.items||S.queue;S.qrev=r.rev||S.qrev;
+  if(r.saved==="playlist"){const ls=await api("/api/playlists");if(ls&&ls.playlists)S.lists=ls.playlists;}   // 재생목록에도 적혔다 — 그쪽 표시도 맞춘다
+  instBoxSync();renderQueue();renderList();
+  const t=it.song||it.title;
+  toast(name?`「${t}」 → ${instLabel(name)}${r.saved==="playlist"?" · 재생목록에도 저장":""}`:`「${t}」 악기를 기본으로 되돌렸습니다`,2800,"ok");}
+function queueInstPick(it,after){pickInst({kick:"이 곡의 악기",title:it.song||it.title,cur:it.inst||"",onPick:async(name)=>{await saveQueueInst(it,name);if(after)after();}});}
+/* 재생목록 항목에 저장 — 그 목록이 지금 대기열에 올라 있으면 대기열 쪽도 같이.
+   after = 저장한 뒤 부를 것 (곡 상세 시트가 제 줄을 다시 그린다) */
+function plInstPick(plId,key,it,after){const pl=S.lists.find((p)=>p.id===plId),x=pl&&pl.items.find((y)=>y.key===key);   // 지금 저장된 값은 목록에서 본다 (it 은 악보함 항목일 수 있다)
+  pickInst({kick:"이 곡의 악기 (재생목록)",title:it?(it.song||it.cleaned||it.title):key,cur:(x&&x.inst)||"",
+  onPick:async(name)=>{const r=await listsApi({op:"set_inst",id:plId,key,inst:name});if(!r||r.ok===false)return;
+    if(S.src==="pl:"+plId&&S.queue.some((q)=>q.key===key)){const q=await api("/api/queue/inst",{key,inst:name});if(q&&q.items)S.queue=q.items;}
+    instBoxSync();renderQueue();render();
+    toast(name?`${instLabel(name)} 로 저장했습니다`:"악기를 기본으로 되돌렸습니다",2500,"ok");
+    if(after)after();}});}
+$("instBtn").onclick=()=>{const it=curItem();
+  if(it){pickInst({kick:"이 곡의 악기",title:it.song||it.title,cur:it.inst||"",footer:true,onPick:(name)=>saveQueueInst(it,name)});return;}
+  pickInst({kick:"장착할 악기",title:"지금 곡이 없습니다 — 「장착」에 쓸 악기를 고릅니다",cur:S.instrument,footer:true,onPick:(name)=>{S.instrument=name;instBoxSync();}});};
+
+/* ── 곡 상세 시트 ── 「이 곡엔 이 인사·이 커버·이 악기」를 곡 카드 한 곳에서 모아 본다.
+   머리: 커버(1 : 1.42, 지금 받는 그림) · #0012 · 제목 · 아티스트 · 길이 · 재생 n회 · 처음/마지막.
+   줄: 악기 · 커버 · 연주 인사 · 재생목록 — 누르면 **있는 시트**를 그대로 연다 (악기 시트 · 커버 고르기 시트).
+   바닥: 「▶ 이 곡 재생」.
+   **밖(폰)에서도 PC 와 같다** (폰 사이트는 PC 앱의 리모컨) — 곡 상세 읽기(/api/song)·
+   악기·커버 고르기(있는 그림 중에서)·연주 인사 붙이기가 쪽지 범위 edit 부터 된다 (server.py `FOLIO_EDIT_OK`).
+   이 PC 의 폴더를 건드리는 것(내 이미지 올리기·관리·온라인 찾기)만 커버 시트에서 감춘다. */
+let DS={key:"",ctx:{kind:"lib"},d:null,greet:false,seq:0};
+function dsOpen(){return $("dsheet").classList.contains("open");}
+/* 어디서 열었나 — 악기 줄이 **어느 칸의 악기**를 보여 주고 고칠지 정한다 (곡마다 악기는 재생목록 항목 · 대기열에 산다) */
+function detailCtx(key,from){
+  const inQ=(S.queue||[]).some((q)=>q.key===key);
+  if(from==="queue"&&inQ)return {kind:"queue"};
+  const v=S.view;
+  if(v.kind==="pl"){const pl=S.lists.find((p)=>p.id===v.id);if(pl&&pl.items.some((x)=>x.key===key))return {kind:"pl",id:pl.id};}
+  if(v.kind==="queue"&&inQ)return {kind:"queue"};
+  return {kind:"lib"};}
+async function openDetail(key,from){if(!key)return;
+  DS={key,ctx:detailCtx(key,from),d:null,greet:false,err:"",seq:(DS.seq||0)+1};
+  detailRender();
+  $("dscrim").hidden=false;$("dsheet").classList.add("open");document.body.classList.add("isheeton");
+  await detailLoad();}
+async function detailLoad(){if(!DS.key)return;const seq=DS.seq,key=DS.key;
+  const d=await api("/api/song?key="+encodeURIComponent(key));
+  if(seq!==DS.seq||key!==DS.key)return;          // 그새 닫았거나 다른 곡을 열었다
+  DS.d=d&&d.ok!==false?d:null;DS.err=DS.d?"":((d&&(d.message||d.error))||"곡 정보를 받지 못했습니다");detailRender();}
+function detailRefresh(){if(!dsOpen()||!DS.key)return;document.body.classList.add("isheeton");
+  detailRender();detailLoad();}
+function closeDetail(){DS.key="";DS.seq++;DS.greet=false;$("dsheet").classList.remove("open");$("dscrim").hidden=true;
+  document.body.classList.remove("isheeton");}
+$("dscrim").onclick=closeDetail;
+const fmtDay=(ts)=>{const n=Number(ts);if(!(n>0))return"";const t=new Date(n*1000);
+  return `${t.getFullYear()}.${String(t.getMonth()+1).padStart(2,"0")}.${String(t.getDate()).padStart(2,"0")}`;};
+/* 이 곡이 든 재생목록 — 화면이 들고 있는 목록에서 본다 (방금 고친 곡별 악기가 바로 보이게) */
+function detailLists(key){return (S.lists||[]).map((p)=>{const i=(p.items||[]).findIndex((x)=>x.key===key);
+  return i<0?null:{id:p.id,name:p.name,inst:p.items[i].inst||"",index:i};}).filter(Boolean);}
+/* 그릴 값 하나로 모은다 — 화면(detailHtml)과 검사(tests/js/folio_song_detail.js)가 같은 것을 본다 */
+function detailModel(){const key=DS.key,lib=S.byKey.get(key)||{},d=DS.d||{},sg=d.song||{};
+  const id=Number(sg.id)||songIdOf(lib.key?lib:{key});
+  const pls=detailLists(key),ctx=DS.ctx||{kind:"lib"},pin=S.settings.inst_pin||"",def=S.settings.default_inst||"";
+  // 악기 — 연 자리의 칸 (재생목록 항목 · 대기열). 악보함에서 열었으면 담긴 재생목록의 값
+  let inst="",where="",instCan=true;
+  if(ctx.kind==="pl"){const pl=S.lists.find((p)=>p.id===ctx.id),x=pl&&pl.items.find((y)=>y.key===key);
+    inst=(x&&x.inst)||"";where=`재생목록 「${pl?pl.name:""}」에 적힌 악기`;}
+  else if(ctx.kind==="queue"){const q=S.queue.find((y)=>y.key===key);inst=(q&&q.inst)||"";where="현재 재생목록에 적힌 악기";}
+  else if(pls.length){const kinds=[...new Set(pls.map((p)=>p.inst))];inst=kinds.length===1?kinds[0]:null;
+    where=pls.length===1?`재생목록 「${pls[0].name}」에 적힌 악기`:`재생목록 ${pls.length}곳 — 목록마다 따로 정합니다`;}
+  else{where="곡마다 악기는 재생목록에 적습니다 — 먼저 재생목록에 담으세요";instCan=false;}
+  const instText=inst===null?"목록마다 다름":(inst?instLabel(inst):"기본"+(def?" · "+instLabel(def):" · 악기 그대로"));
+  // 커버 — 고른 값(`cover`)과 지금 받는 차례
+  const cv=d.cover||{sel:lib.coverSel||"",url:lib.coverUrl||"",where:"",src:null};
+  const sel=cv.sel||"";let coverText,coverSub="";
+  if(!sel){coverText="번호대로";coverSub={gen:"생성 커버 — 제목·아티스트로 그린 것",own:"번호 파일 — covers 폴더의 "+(id?String(id).padStart(4,"0"):"")+" 그림",default:"내 기본 풀에서 번호로 고른 한 장"}[cv.where]||"자동";}
+  else if(sel.startsWith("default:")){coverText="기본 커버 · "+sel.slice(8).replace(/^\d+-|\.\w+$/g,"");coverSub="앱에 딸린 기본 커버";}
+  else if(cv.src){coverText="온라인 · "+(cv.src.sourceName||cv.src.source);coverSub=sel;}
+  else{coverText="내 이미지 · "+sel;coverSub="covers 폴더의 mine 에 있는 그림";}
+  if(sel&&cv.where&&cv.where!=="pick")coverSub="고른 파일이 폴더에 없어 번호대로 나옵니다 · "+sel;
+  // 연주 인사 — 곡별 지정(by_song)이 먼저, 없으면 기본 시작 프리셋
+  const g=d.greet||null;
+  const greetText=g?(g.bound?g.boundName:"기본 · "+(g.pickName||"첫 시작 프리셋")):"불러오는 중…";
+  const greetSub=g?(!g.on?"연주 인사가 꺼져 있습니다 — 인사 화면에서 켜야 게임에 나갑니다":(g.bound?"이 곡을 틀 때 보내는 시작 인사":"이 곡에 따로 붙인 인사가 없습니다")):"";
+  const meta=[];const dur=sg.duration||lib.duration||0;
+  if(dur)meta.push(fmtSec(dur));
+  if(d.song)meta.push(`재생 ${Number(sg.plays)||0}회`);
+  if(sg.first_seen)meta.push("처음 "+fmtDay(sg.first_seen));
+  if(sg.last_seen)meta.push("마지막 "+fmtDay(sg.last_seen));
+  if(!d.song&&lib.lastPlayed)meta.push("최근 재생 "+fmtDay(lib.lastPlayed/(lib.lastPlayed>1e12?1000:1)));
+  if(sg.gone)meta.push("보관함에 없음");
+  return {key,id,tag:songTag(id),title:sg.song||lib.song||lib.cleaned||sg.title||lib.title||key,artist:sg.artist||lib.artist||"",
+    meta:meta.join(" · "),coverUrl:cv.url||"",ctx,inst,instText,instWhere:where,instCan,pin,
+    coverText,coverSub,greet:g,greetText,greetSub,lists:pls,readOnly:false};}
+function detailHtml(m){
+  const ar='<span class="ar">›</span>';
+  let h="";
+  if(!m.readOnly){   // 쓰는 줄 — 밖(폰)에서는 그리지 않는다
+    h+=`<div class="drow" data-d="inst" data-w="1"><span class="lb">악기</span><span class="v"><b${m.pin?' class="over"':""}>${esc(m.instText)}</b><small>${esc(m.instWhere)}</small>`
+      +(m.pin?`<span class="pin"><svg><use href="#ic-pin"/></svg>고정 중 — ${esc(instLabel(m.pin))} 로 재생합니다 (곡 악기보다 먼저)</span>`:"")
+      +`</span>${m.instCan?ar:""}</div>`;
+    h+=`<div class="drow" data-d="cover" data-w="1"><span class="lb">커버</span><span class="v"><b>${esc(m.coverText)}</b>${m.coverSub?`<small>${esc(m.coverSub)}</small>`:""}</span>${ar}</div>`;
+    h+=`<div class="drow" data-d="greet" data-w="1"><span class="lb">연주 인사</span><span class="v"><b>${esc(m.greetText)}</b>${m.greetSub?`<small>${esc(m.greetSub)}</small>`:""}</span><span class="ar">${DS.greet?"⌃":"›"}</span></div>`;
+    if(DS.greet&&m.greet){const cur=m.greet.bound||"";
+      h+=`<div class="dopts">`
+        +[{id:"",name:"기본 — "+(m.greet.pickName||"첫 시작 프리셋")}].concat(m.greet.presets||[]).map((x)=>
+          `<div class="irow ${x.id===cur?"on":""}" data-g="${esc(x.id)}"><span class="chk">${x.id===cur?"●":""}</span><span class="nm">${esc(x.name)}</span></div>`).join("")
+        +(m.greet.presets&&m.greet.presets.length?"":`<div class="irow def"><span class="chk"></span><span class="nm">만들어 둔 시작 프리셋이 없습니다</span></div>`)
+        +`<div class="irow edit" data-gx="1"><span class="chk"></span><span class="nm">프리셋 만들기 · 편집 ›</span></div></div>`;}
+  }
+  const chips=m.lists.map((p)=>`<button class="chip" data-pl="${esc(p.id)}" title="「${esc(p.name)}」로 가기"><span class="t">${esc(p.name)}</span>${p.inst?` <span class="n">${esc(instLabel(p.inst))}</span>`:""}</button>`).join("");
+  h+=`<div class="drow ro" data-d="pl"><span class="lb">재생목록</span><span class="v"><span class="dpls">${chips
+    ||(m.readOnly?'<small>담긴 재생목록이 없습니다</small>':'<button class="chip add" data-pl="+">+ 재생목록에 담기</button>')}</span></span></div>`;
+  if(DS.err&&!m.readOnly)h+=`<div class="cmsg bad">${esc(DS.err)}</div>`;
+  return h;}
+function detailRender(){if(!DS.key)return;const m=detailModel();
+  $("dId").textContent=m.tag||"번호 없음";$("dT").textContent=m.title;$("dA").textContent=m.artist;$("dMeta").textContent=m.meta;
+  $("dCover").innerHTML=m.coverUrl?imgTag(m.coverUrl,' decoding="async"'):`<span class="ph mono">${esc(m.tag||"♪")}</span>`;MF.hydrate($("dCover"));
+  const b=$("dbody");b.innerHTML=detailHtml(m);
+  b.querySelectorAll("[data-d]").forEach((r)=>r.onclick=(e)=>detailAct(r.dataset.d,e,m));
+  b.querySelectorAll("[data-g]").forEach((r)=>r.onclick=()=>greetAssign(r.dataset.g));
+  b.querySelectorAll("[data-gx]").forEach((r)=>r.onclick=()=>{const lib=S.byKey.get(m.key);greetMenu(null,m.key,lib||{title:m.title});});
+  b.querySelectorAll("[data-pl]").forEach((c)=>c.onclick=(e)=>{e.stopPropagation();detailJump(c.dataset.pl,e);});}
+function detailAct(what,e,m){if(m.readOnly)return;const key=m.key,lib=S.byKey.get(key)||{key,title:key};
+  if(what==="inst"){const ctx=m.ctx;
+    if(ctx.kind==="pl"){plInstPick(ctx.id,key,lib,detailRefresh);return;}
+    if(ctx.kind==="queue"){const q=S.queue.find((y)=>y.key===key);if(q){queueInstPick(q,detailRefresh);return;}}
+    if(!m.lists.length){toast(m.instWhere,3000);return;}
+    if(m.lists.length===1){plInstPick(m.lists[0].id,key,lib,detailRefresh);return;}
+    menu(e,[["어느 재생목록의 악기를 바꿀까요",null]].concat(m.lists.map((p)=>[`${p.name} · ${p.inst?instLabel(p.inst):"기본"}`,()=>plInstPick(p.id,key,lib,detailRefresh)])));return;}
+  if(what==="cover"){if(!m.id){toast("곡 번호가 아직 없습니다 — 위의 갱신을 눌러 보관함을 읽어 주세요",3000);return;}
+    pickCover(lib);return;}
+  if(what==="greet"){if(!m.greet){toast("인사 프리셋을 불러오는 중입니다",2000);return;}DS.greet=!DS.greet;detailRender();}}
+/* 곡별 시작 인사 붙이기 — POST /api/greet/assign {key, preset} (preset "" = 기본). 붙인 값은 presets.json 의
+   by_song 이고 engine.greet_pick("start", key) 가 먼저 본다 (greet.html 「이 곡」 갈래와 같은 칸) */
+async function greetAssign(id){const key=DS.key;if(!key)return;
+  const r=await api("/api/greet/assign",{key,preset:id||""});
+  if(!r||r.ok===false){toast("인사를 붙이지 못했습니다: "+((r&&(r.message||r.error))||""));return;}
+  if(DS.d&&DS.d.greet){const g=DS.d.greet;g.bound=r.preset||"";g.boundName=((g.presets||[]).find((x)=>x.id===g.bound)||{}).name||"";}
+  DS.greet=false;detailRender();
+  toast(id?"이 곡을 틀 때 이 인사를 보냅니다":"이 곡의 인사를 기본으로 되돌렸습니다",2500,"ok");}
+/* 재생목록 칩 → 그 목록으로 가서 이 곡 줄을 보인다 */
+function detailJump(id,e){const key=DS.key;
+  if(id==="+"){addMenu(e,[key]);return;}
+  closeDetail();if($("sheet").classList.contains("open"))closeSheet();
+  setView({kind:"pl",id});
+  const r=[...document.querySelectorAll("#list .row")].find((x)=>x.dataset.k===key);if(r)r.scrollIntoView({block:"center"});}
+/* 「▶ 이 곡 재생」 — 대기열에 있으면 그 자리에서, 아니면 이 곡 하나 (연 자리의 곡별 악기로) */
+function detailPlay(){const key=DS.key;if(!key)return;const m=detailModel(),lib=S.byKey.get(key)||{key,title:key};closeDetail();
+  const qi=(S.queue||[]).findIndex((q)=>q.key===key);
+  if(qi>=0){playAt(qi);return;}
+  playFrom([{key,title:lib.title||key,inst:(typeof m.inst==="string"&&m.ctx.kind!=="lib")?m.inst:""}],0,"single",m.title);}
+$("dPlay").onclick=detailPlay;
+/* 펼친 플레이어의 제목을 누르면 지금 곡의 상세 */
+$("sT").title=SONG_SET_LABEL;
+$("sT").onclick=()=>{const k=S.now&&S.now.key;if(!k){toast("게임에서 직접 튼 곡이라 곡 정보를 모릅니다",2500);return;}openDetail(k,"queue");};
+
+/* ── 검색 ── */
+$("q").oninput=()=>{S.q=$("q").value;clearTimeout(S._qt);S._qt=setTimeout(renderList,120);};
+document.addEventListener("keydown",(e)=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){e.preventDefault();$("q").focus();$("q").select();return;}
+  if(e.key==="Escape"){if($("isheet").classList.contains("open")){closeInst();return;}if($("csheet").classList.contains("open")){closeCover();return;}if($("dsheet").classList.contains("open")){closeDetail();return;}if($("sheet").classList.contains("open")){closeSheet();return;}if(S.q){S.q="";$("q").value="";renderList();}}});
+/* 갱신 — 이 PC 에서는 게임을 읽어 캐시를 새로 채운다(`/api/sync`). **폰(밖)은 게임을 읽지 않는다** — PC 가 읽어 둔
+   악보·악기·상태를 다시 받을 뿐이다. */
+$("btnSync").onclick=async()=>{const b=$("btnSync");b.disabled=true;b.classList.add("on");try{const r=REMOTE?{ok:true}:await api("/api/sync",{});await refreshState();await loadAll();if(!r.ok){const bad=(r.steps||[]).find((s)=>!s.ok||s.error)||{};toast("갱신 실패: "+(bad.message||r.message||bad.error||r.error||""));}else toast(`${REMOTE?"PC 가 읽어 둔 값 · ":""}악보 ${S.all.length}곡 · 악기 ${S.instruments.length}개`,2500,"ok");}finally{b.disabled=false;b.classList.remove("on");}};
+/* 연주하지 않고 악기만 바꿔 든다 (게임 CLI 의 change_instrument) — 칸에 보이는 악기(지금 곡의 것 · 고른 것 · 기본) */
+$("btnEquip").onclick=()=>{const it=curItem();equipName(S.settings.inst_pin||(it&&it.inst)||S.instrument||S.settings.default_inst||"");};
+async function equipName(name){
+  if(!name){toast("바꿀 악기를 먼저 고르세요 — 악기 칸을 누르면 목록이 올라옵니다",2800);return;}
+  const b=$("btnEquip");b.disabled=true;try{const r=await api("/api/instrument",{instrument:name});
+    if(r&&r.ok){toast(r.skipped?"이미 장착 중입니다":`악기를 바꿨습니다 · ${instLabel(name)}`,2500,"ok");await loadAll();}else toast("악기 교체 실패: "+((r&&(r.message||r.error))||""));}
+  finally{b.disabled=false;}};
+
+/* ── 오버레이·연출 (그대로 유지) ── */
+async function ovSync(st){
+  // 연출 단추는 **설정 스위치**라 밖에서도 눌러야 한다 (곡이 시작될 때 PC 가 띄운다).
+  // 오버레이 단추만 이 PC 의 창을 직접 건드리므로 밖에서는 감춘다.
+  if(!CAN.overlay){S.ov={has:false,on:false};return null;}
+  st=st||await api("/api/overlay");const has=st&&st.available;S.ov={has:!!has,on:!!(has&&st.visible)};
+  // 없으면 감추지 않고 흐린 채로 까닭을 툴팁에 (자리가 오가지 않게). 받지 못했으면(st 없음) 흐린 채 다음 5초를 기다린다
+  $("btnOv").disabled=!has;$("btnOv").title=has?"게임 위 오버레이 (Shift+F1)":st?"이 판에는 게임 위 오버레이가 없습니다":"불러오는 중 — 오버레이 상태를 받으면 누를 수 있습니다";
+  if(has)$("btnOv").classList.toggle("on",!!st.visible);return st;}
+$("btnOv").onclick=async()=>{const st=await api("/api/overlay");await ovSync(await api("/api/overlay",{on:!(st&&st.visible)}));};
+/* 합주 시작 연출은 **서버가 연주 한 번에 한 번** 낸다 (folio/engine.py `opening_fire`).
+   예전에는 이 창도 재생 직후·합주 인식 순간에 /api/opening 을 불러서, 인사 타임라인·오버레이 감시와 겹쳐
+   카드가 두 번 나왔다. 이 창은 이제 켜고 끄는 스위치만 든다. */
+/* 연출 단추는 켜고 끄는 스위치다 — 누르면 그 자리에서 띄우는 게 아니라, 곡이 시작될 때 나온다.
+   기본은 켜짐. 끄면 연주를 시작해도 연출이 뜨지 않는다. */
+/* 연출 단추는 스위치다 — 켜짐/꺼짐 색은 **오버레이 단추와 같게** (켜짐 = 골드 .on). */
+function opSync(){const on=!(S.settings&&S.settings.opening===false);
+  $("btnOpen").disabled=false;   // 설정을 받았다 — 흐림을 푼다 (처음엔 disabled 로 자리만)
+  $("btnOpen").classList.toggle("on",on);
+  $("btnOpen").title=on?"연주 시작 연출 — 켜짐 (곡이 시작될 때 나옵니다)":"연주 시작 연출 — 꺼짐";}
+$("btnOpen").onclick=()=>openingToggle();
+async function openingToggle(){const b=$("btnOpen");b.disabled=true;
+  const on=!(S.settings&&S.settings.opening===false);
+  try{const r=await api("/api/settings",{settings:{opening:!on}});
+    if(r&&r.ok===false){toast("설정을 저장하지 못했습니다: "+(r.message||r.error||""));return;}
+    S.settings.opening=!on;opSync();toast(!on?"연주 시작 연출을 켰습니다":"연주 시작 연출을 껐습니다",2500,"ok");
+  }finally{b.disabled=false;}};
+
+/* ── 시트 (접었다 펴는 플레이어) ── */
+function openSheet(){$("sheet").classList.add("open");document.body.classList.add("sheeton");document.documentElement.style.setProperty("--sheeth",Math.round($("sheet").getBoundingClientRect().height)+"px");$("scrim").hidden=false;$("list").classList.add("dim");renderQueue();
+  if(S.tab==="near")setTab("near");}
+function closeSheet(){$("sheet").classList.remove("open");document.body.classList.remove("sheeton");$("scrim").hidden=true;$("list").classList.remove("dim");
+  clearInterval(S.nearT);S.nearT=null;}   // 안 보면 주변 조회도 멈춘다
+$("btnUp").onclick=(e)=>{e.stopPropagation();openSheet();};
+/* 재생 줄 ＋ — **지금 재생 중인 곡을 현재 재생목록에 바로** 담는다.
+   틀고 있는 출처가 재생목록(pl:…)이 아닐 때만 어느 목록에 담을지 묻는다(addMenu) — 예전에는 늘 메뉴가 떴다 */
+$("btnAddNow").onclick=async(e)=>{e.stopPropagation();const k=S.now&&S.now.key;
+  if(!k){toast("지금 재생 중인 곡이 없습니다",2500);return;}
+  const pl=S.src&&S.src.startsWith("pl:")?S.lists.find((p)=>p.id===S.src.slice(3)):null;
+  if(!pl){addMenu(e,[k]);return;}
+  if((pl.items||[]).some((it)=>it.key===k)){toast(`「${pl.name}」에 이미 있습니다`,2500);return;}
+  const r=await listsApi({op:"add",id:pl.id,keys:[k]});if(r&&r.ok!==false){toast(`「${pl.name}」에 담았습니다`,2500);render();}};
+$("mainrow").onclick=(e)=>{if(e.target.closest("#btnMain,#ctl"))return;openSheet();};
+$("grab").onclick=closeSheet;$("scrim").onclick=closeSheet;
+$("qEdit").onclick=()=>{closeSheet();const pl=S.src&&S.src.startsWith("pl:")?S.src.slice(3):null;
+  if(pl&&S.lists.some((p)=>p.id===pl))setView({kind:"pl",id:pl});else toast("담을 곡을 고른 뒤 「+ 담기」로 재생목록을 만드세요",3500);};
+
+/* ── 재생 ── */
+function setNow(title,sub){$("nowT").textContent=title;$("sT").textContent=title;$("sS").textContent=sub;
+  $("nowA").textContent=(S.now&&S.now.artist)||"";}   // 접힌 재생 줄의 둘째 줄 — 아티스트 · 시간
+function setMain(p){for(const [b,i] of [[$("btnMain"),$("mainIcon")],[$("sMain"),$("sMainIcon")]]){b.classList.toggle("idle",!p);i.className=p?"sq":"tri";}
+  $("skickT").textContent=p?"NOW PLAYING":"READY";}
+/* 탈것 탑승 중 — 서버 감시가 읽은 값(/api/now · /api/queue 의 mounted · wait_mount)을 두 자리에 비춘다.
+   폰(밖)에서도 같은 표시다 — 읽기만 한다. */
+function mountSync(o){if(!o||typeof o.mounted!=="boolean")return;const on=o.mounted||!!o.wait_mount;
+  const t=o.wait_mount?"내리면 재생":"탈것 탑승 중";
+  for(const id of ["mountB","sMount"]){const b=$(id);b.hidden=!on;b.textContent=t;}}
+function setProg(pct){pct=Math.max(0,Math.min(100,pct||0));$("prog").style.width=pct+"%";$("sprogi").style.width=pct+"%";}
+function setTime(el,tot){const s=`${fmtSec(el)} / ${fmtSec(tot)}`;$("ctime").textContent=s;$("stime").textContent=s;}
+/* 합주 인식 — **판정은 서버가 한다** (`/api/now` 의 ens).
+   서버는 내 StartAt 과 같은 사람을 세어 합주단을 가린다. 예전에는 이 창이 10초마다 따로
+   주변을 조회하고 「같은 곡 + 다채널」로 어림짐작했는데, 옆에서 같은 곡을 따로 트는 사람과
+   구분이 안 됐고 오버레이와 값도 달랐다 (「미니와 오버레이는 한 몸」).
+   **합주 중에는 정지·다음 곡을 우리가 하지 않는다** — 붙어 있는 사람들이 계속 치기 때문이다. */
+const elFix=(el,tot,loop)=>!(tot>0)?el:(el>tot?(loop?el%tot:tot):el);   // 반복 연주에서 경과가 곡 길이를 넘어가는 것 보정
+const ensReset=()=>{S.ens={on:false,n:0,members:[]};};
+function ensFromNow(nw){                       // 서버가 준 판정을 그대로 받는다
+  const e=(nw&&nw.ens)||{},was=S.ens.on;
+  S.ens={on:!!e.on,n:Number(e.n)||0,members:e.members||[]};
+  if(S.ens.on&&!was){
+    toast(`합주 인식 — 나와 같은 연주에 ${S.ens.n}명 · 정지·다음 곡은 자동으로 하지 않습니다`,5000,"ok");
+  }}
+
+/* 합주가 끝나면 다음 곡을 **물어본다** — 우리가 임의로 넘기면, 붙어 있던 사람들이
+   계속 치고 있는 곡을 끊게 된다. 60초 안에 답이 없으면 물음은 스스로 사라진다. */
+function askFromNow(nw){
+  const a=(nw&&nw.ask_next)||{};
+  $("askbar").hidden=!a.on;
+  if(a.on)$("askT").textContent=`합주가 끝났습니다 (${a.n||0}명) — 다음 곡으로 넘어갈까요?`;}
+$("askGo").onclick=async()=>{$("askbar").hidden=true;const r=await api("/api/queue/ask",{go:true});
+  S.opFresh=true;await afterPlay(r);};
+$("askNo").onclick=async()=>{$("askbar").hidden=true;await api("/api/queue/ask",{go:false});};
+
+/* ── 재생 — 대기열은 **서버가 하나만** 들고 있다 (오버레이와 같은 것) ──────────────
+   예전에는 미니(S.queue)와 오버레이(_queue)가 각자 대기열과 넘김 엔진을 들고 있어서
+   같은 순간에 두 창의 「다음 곡」이 달랐다. 이제 여기서는 그려 주고 명령만 보낸다. */
+/* 반복·셔플·악기 고정은 **서버 설정 하나**다 — 오버레이에서 바꾼 것도 여기로 들어온다.
+   방금 이 창에서 바꿨으면 1.5초 동안은 덮지 않는다. */
+function playCfgFrom(q){if(!q||Date.now()<(S.cfgHold||0))return;
+  if(typeof q.shuffle==="boolean"&&q.shuffle!==S.shuffle){S.settings.shuffle=q.shuffle;setShuffle(q.shuffle,false);}
+  if(q.repeat&&q.repeat!==S.repeat){S.settings.repeat=q.repeat;setRepeat(q.repeat,false);}
+  const pin=q.instPin||"";if(pin!==(S.settings.inst_pin||"")){S.settings.inst_pin=pin;instBoxSync();
+    if($("isheet").classList.contains("open"))renderInstSheet(false);}}
+async function qPull(first,pre){const q=pre||await api("/api/queue");if(!q||!q.ok)return null;
+  playCfgFrom(q);mountSync(q);
+  // 창을 새로 열었을 때는 보기를 바꾸지 않는다 — 이미 있던 대기열을 이어받기만 한다.
+  const fresh=!first&&q.gen!==S.qgen&&q.total;S.qgen=q.gen;S.qrev=q.rev;
+  S.queue=q.items||[];S.qi=q.pos;S.src=q.src||"";S.qname=q.name||"";S.qnext=q.next||null;instBoxSync();
+  if(fresh&&S.view.kind!=="queue"){setView({kind:"queue"});return q;}
+  renderQueue();
+  if(S.view.kind==="queue"){renderList();renderAll();}      // 셔플로 차례가 바뀌면 현재 재생목록 화면도 같이 바뀐다
+  return q;}
+/* 쉬는 동안(재생 조회가 멈춰 있을 때)에도 서버 대기열·반복·셔플·고정을 3초마다 본다 — CLI 를 쓰지 않는 길이다.
+   재생 중에는 pollAct 가 /api/now 의 gen·rev 로 같은 일을 한다 (설정이 바뀌면 서버가 rev 를 올린다). */
+async function cfgSync(){if(S.pollT||S.switching)return;const q=await api("/api/queue");if(!q||!q.ok)return;
+  mountSync(q);
+  if(q.gen!==S.qgen||q.rev!==S.qrev||(typeof q.shuffle==="boolean"&&q.shuffle!==S.shuffle)||(q.repeat&&q.repeat!==S.repeat)
+     ||(q.instPin||"")!==(S.settings.inst_pin||""))await qPull(false,q);}
+async function playFrom(list,index,src,name){
+  if(S.switching||!list.length||index<0)return;
+  S.switching=true;S.opFresh=true;
+  try{
+    const keys=list.map((x)=>x.key||x.title);
+    const inst={};for(const x of list){if(x.inst)inst[x.key||x.title]=x.inst;}
+    const it=list[index];const lib=libOf(it);
+    S.now={key:it.key,title:it.title,song:lib?(lib.song||lib.cleaned):it.title,artist:lib?lib.artist:""};
+    setNow(S.now.song,"전송 중…");setProg(0);setTime(0,(lib&&lib.duration)||0);
+    const r=await api("/api/queue",{keys,start:it.key||it.title,src:src||"view",name:name||viewName(),inst});
+    await afterPlay(r);
+  }finally{S.switching=false;}}
+async function playAt(i){if(S.switching)return;S.switching=true;S.opFresh=true;
+  try{await afterPlay(await api("/api/queue/at",{index:i}));}finally{S.switching=false;}}
+async function qStep(dir){if(S.switching)return;S.switching=true;
+  try{const r=await api("/api/queue/step",{dir});
+    if(r&&r.error==="queue_end"){toast("대기열 끝입니다 — 전체 반복을 켜면 처음으로 돌아갑니다",3000);await qPull();return;}
+    S.opFresh=true;await afterPlay(r);}finally{S.switching=false;}}
+async function afterPlay(r){
+  if(!r||r.ok===false&&!r.play){toast("재생 실패: "+((r&&(r.message||r.error))||""));return;}
+  S.queue=r.items||S.queue;S.qi=r.pos!=null?r.pos:S.qi;S.src=r.src||S.src;S.qname=r.name||S.qname;
+  S.qnext=r.next||null;S.qgen=r.gen||S.qgen;instBoxSync();
+  const it=(r.now||null);const play=r.play||{};
+  if(it){const lib=libOf(it);S.now={key:it.key,title:it.title,song:lib?(lib.song||lib.cleaned):(it.song||it.title),artist:(lib&&lib.artist)||it.artist||""};}
+  if(!play.ok&&play.error==="riding"){   // 탈것 위 — 서버가 보내지 않고 기다린다. 내리면 서버가 이어서 튼다
+    // 설정이 꺼져 있으면 켜는 길을 알려 준다 (켜져 있는데 못 내렸으면 서버가 준 까닭 그대로)
+    S.playing=false;setMain(false);
+    toast(S.settings.folio_dismount_by_craft?(play.message||"탈것에서 내린 뒤 재생하세요 — 내리면 이어서 재생합니다")
+      :"탈것에서 내린 뒤 재생하세요 — 설정 → 연주 「탈것이면 날개 5 로 내리고 재생」을 켜면 자동으로 내립니다",5000);
+    mountSync({mounted:true,wait_mount:true});setNow(S.now?S.now.song:"대기","탈것 탑승 중 — 내리면 이어서 재생");
+    renderQueue();renderList();startPoll();return;}
+  if(!play.ok){S.playing=false;setMain(false);setNow(S.now?S.now.song:"대기","실패: "+(play.message||play.error||""));renderQueue();renderList();return;}
+  S.playing=true;S.startedAt=Date.now();S.manualStop=false;ensReset();setMain(true);startPoll();
+  if(S.view.kind!=="queue"&&S.qgen)setView({kind:"queue"});else{renderQueue();renderList();}
+  S.opFresh=false;}
+/* ── 펼친 플레이어의 탭 ──
+   주변 연주는 **서버가 StartAt 으로 묶어 준다** (`/api/near`). 게임은 「누가 누구와 합주 중인가」를
+   알려 주지 않지만 StartAt 은 합주단 전원이 같은 값을 갖는다. 이름은 주지 않아 **칭호**를 쓴다.
+   탭을 열고 있는 동안에만 조회한다 — 아무도 안 보면 서버도 주변을 묻지 않는다. */
+S.tab="queue";S.nearT=null;
+function setTab(t){
+  S.tab=t;
+  for(const b of document.querySelectorAll(".stab"))b.classList.toggle("on",b.dataset.t===t);
+  $("squeue").hidden=t!=="queue";$("snear").hidden=t!=="near";
+  clearInterval(S.nearT);S.nearT=null;
+  if(t==="near"){nearPull();S.nearT=setInterval(nearPull,1500);}}
+for(const b of document.querySelectorAll(".stab"))b.onclick=()=>setTab(b.dataset.t);
+const distText=(d)=>d==null?"":(d===0?"바로 옆":`${Math.round(d)}m`);
+async function nearPull(){
+  if($("snear").hidden)return;
+  const n=await api("/api/near");
+  if(!n)return;
+  const gs=n.groups||[];
+  $("tabNN").hidden=!gs.length;$("tabNN").textContent=gs.length;
+  const h=$("nhead");
+  h.innerHTML=n.ok
+    ?`${n.realm?`<b>${esc(n.realm)}</b><span style="color:var(--faint3)">·</span>`:""}연주 중 <b class="mono">${n.playing||0}</b><span style="flex:1"></span>연주 안 함 <b class="mono">${n.quiet||0}</b>`
+    :`주변을 읽지 못했습니다${n.message?" — "+esc(n.message):""}`;
+  $("nlist").innerHTML=gs.length?gs.map((g)=>{
+    const tags=[`<span class="ntag size">${g.size}인</span>`];
+    if(g.loop)tags.push(`<span class="ntag">반복</span>`);
+    if(g.copy)tags.push(`<span class="ntag copy">복사 허용</span>`);
+    const tot=Number(g.total)||0,el=Number(g.elapsed)||0;
+    const mem=(g.members||[]).map((m)=>`<span>${esc(m.title||"칭호 없음")}</span>`).join("");   // 「N성부」 꼬리는 뺐다
+    return `<div class="ngrp${g.me?" me":""}">
+      <div class="top"><span class="song">${esc(g.song||g.title||"미확인 곡")}</span><span class="dist">${g.me?"내 연주":esc(distText(g.distance))}</span></div>
+      <div class="tags">${tags.join("")}<span class="time mono">${tot?`${fmtSec(el)} / ${fmtSec(tot)}`:fmtSec(el)}</span></div>
+      <div class="nbar"><i style="width:${Math.max(0,Math.min(100,g.pct||0))}%"></i></div>
+      ${mem?`<div class="mem">${mem}</div>`:""}
+    </div>`;}).join("")
+    :`<div style="font-size:12px;color:var(--faint);padding:6px 0">주변에 연주 중인 사람이 없습니다</div>`;}
+function renderQueue(){
+  const box=$("qlist"),pos=S.qi,items=S.queue||[];const nexts=[];const wrap=S.repeat==="all";
+  for(let k=0;k<items.length&&nexts.length<4;k++){const i=(pos<0?0:pos)+k;
+    const it=items[wrap?i%items.length:i];if(it)nexts.push([k,it]);}
+  $("tabQN").textContent=items.length||0;
+  $("qlabel").textContent=items.length?`다음 ${Math.max(0,nexts.length-1)}곡 · 전체 ${items.length}${S.shuffle?" · 셔플":""}${S.qname?" · "+S.qname:""}`:"다음 곡";
+  if(!nexts.length){box.innerHTML='<div class="qrow"><span>·</span><b style="color:var(--row-sub)">담긴 곡이 없습니다</b><i></i></div>';return;}
+  box.innerHTML=nexts.map(([k,it],n)=>
+    `<div class="qrow${k===0?" now":""}" data-i="${String(n)}" title="누르면 이 곡의 악기를 고릅니다"><span class="mono">${k===0?"▶":n}</span><b>${esc(it.song||it.title)}${it.inst?`<span class="qi">${esc(instLabel(it.inst))}</span>`:""}</b><i class="mono">${it.duration?fmtSec(it.duration):"--:--"}</i></div>`).join("");
+  box.querySelectorAll(".qrow[data-i]").forEach((r)=>r.onclick=()=>{const it=nexts[Number(r.dataset.i)];if(it)queueInstPick(it[1]);});}
+function startPoll(){clearInterval(S.pollT);S.pollT=setInterval(pollAct,1000);}
+async function stopAll(msg){clearInterval(S.pollT);S.pollT=null;clearTimeout(S.gapT);S.gapT=null;S.playing=false;setMain(false);ensReset();
+  setNow(S.now?S.now.song:"대기",msg||"대기");setProg(0);renderQueue();renderList();}
+let pollBusy=false;
+async function pollAct(){if(S.switching||pollBusy)return;pollBusy=true;try{
+  if(!S.playing&&S.qi<0){clearInterval(S.pollT);S.pollT=null;return;}   // 대기열이 있으면 계속 본다
+  const gen=S.gen;const nw=await api("/api/now");if(S.switching||gen!==S.gen||!S.pollT)return;
+  if(!nw||!nw.ok){S.pollErr=(S.pollErr||0)+1;if(S.pollErr>=5){S.pollErr=0;await stopAll("CLI 응답 없음");}return;}
+  S.pollErr=0;const p=nw.perf||{};const s=S.settings;const sinceStart=(Date.now()-S.startedAt)/1000;
+  mountSync(nw);
+  ensFromNow(nw);
+  askFromNow(nw);
+  // 악기는 **오버레이와 한 몸**이다 — 게임이 알려 주는 「지금 든 악기」를 기억해 두고, 곡에 저장된
+  // 악기가 없을 때 칸에 「그대로 · [종류] 이름」 으로 비춘다.
+  if(p.InstrumentName&&p.InstrumentName!==S.instSeen){S.instSeen=p.InstrumentName;instBoxSync();}
+  const qn=nw.queue||{};
+  if(qn.gen!==S.qgen||qn.rev!==S.qrev)await qPull();          // 서버가 차례·자리를 바꿨다 (다음 곡·셔플)
+  if(nw.gap>0){S.playing=false;setMain(false);setNow(S.now?S.now.song:"대기",`다음 곡까지 ${Math.ceil(nw.gap)}초…`);return;}
+  // 모비웍스 큐에 곡 경계에서 양보했고, 큐가 일을 끝내며 **이어서 틀지 않고** 멈춘 채로 뒀다 (engine.work_release) —
+  // ■ 과 이 한 줄. 다음 곡은 사람이 ▶ 를 눌러야 간다
+  if(nw.work_stop&&!p.IsPlaying){S.playing=false;setMain(false);setNow(S.now?S.now.song:"대기","작업에 양보해 멈춤 — ▶ 로 이어서 재생");return;}
+  // 서버 엔진이 다음 곡을 시작했으면 화면도 그 곡으로 (전체 반복에서 미니만 멈춰 있던 것)
+  // 탈것에서 내려 서버가 미뤄 둔 곡을 이어서 튼 경우도 여기로 온다 (같은 곡이지만 이 창은 「안 치는 중」이었다)
+  if(nw.playing&&(!S.playing||!S.now||tkey(nw.title)!==tkey(S.now.title))){
+    const it=S.queue[S.qi];if(it){const lib=libOf(it);
+      S.now={key:it.key,title:it.title,song:lib?(lib.song||lib.cleaned):(it.song||it.title),artist:(lib&&lib.artist)||it.artist||""};}
+    S.playing=true;S.startedAt=Date.now()-(nw.el||0)*1000;S.manualStop=false;ensReset();setMain(true);renderQueue();renderList();}
+  if(p.IsPlaying){const cached=(S.byTitle.get(S.now?.title)||{}).duration||0;const tot=p.TotalDurationSeconds||cached||0,el=elFix(p.ElapsedSeconds||0,tot,p.IsLoop);
+    if(el>0&&S.startedAt>Date.now()-el*1000-1500)S.startedAt=Date.now()-el*1000;const localEl=(Date.now()-S.startedAt)/1000;S.lastRemain=tot?tot-el:null;
+    setNow(S.now.song,`${S.ens.on?`합주 ${S.ens.n+1}명 · `:""}${p.InstrumentName?instLabel(p.InstrumentName):""}${p.IsLoop?" · 반복 설정":""}${S.queue.length>1?` · ${S.qi+1}/${S.queue.length}`:""}${S.repeat==="one"?" · 한 곡 반복":S.repeat==="all"?" · 전체 반복":""}`);
+    setTime(el,tot);setProg(tot?el/tot*100:0);
+    // 다음 곡으로 넘기는 일은 **서버 엔진**이 한다 (여기서 또 넘기면 두 칸씩 간다).
+    // 합주 중에는 서버가 넘기지 않는다 — 붙어 있는 사람들이 계속 치기 때문이다.
+  }else if(S.playing){if(sinceStart<2.5)return;
+    S.playing=false;setMain(false);
+    if(S.manualStop){stopAll("정지됨");return;}
+    setNow(S.now?S.now.song:"대기",S.qi>=0&&(S.queue.length>1||S.repeat!=="off")?"다음 곡 준비 중…":"연주 종료");}
+  }finally{pollBusy=false;}}
+async function mainToggle(){if(S.switching)return;
+  if(S.playing||S.gapT){S.manualStop=true;clearTimeout(S.gapT);S.gapT=null;S.gen++;const r=S.playing?await api("/api/stop",{}):{ok:true};
+    if(r.ok)await stopAll("정지됨");else{S.manualStop=false;setNow(S.now?S.now.song:"대기","정지 실패: "+(r.message||r.error||""));}}
+  else if(S.qi>=0&&S.queue[S.qi])await playAt(S.qi);
+  else{const k=[...S.selected][0];const it=k&&S.byKey.get(k);if(it)playFrom([{key:k,title:it.title,inst:""}],0,"single");else toast("곡을 두 번 누르거나, 고른 뒤 ▶ 를 누르세요",3000);}}
+$("btnMain").onclick=(e)=>{e.stopPropagation();mainToggle();};$("sMain").onclick=mainToggle;
+const goNext=()=>{if(!S.queue.length||S.switching)return;qStep(1);};
+const goPrev=async()=>{if(!S.queue.length||S.switching)return;
+  const el=(Date.now()-S.startedAt)/1000;if(S.playing&&el>4)await playAt(S.qi);else await qStep(-1);};
+$("btnNext").onclick=(e)=>{e.stopPropagation();goNext();};$("sNext").onclick=goNext;
+$("btnPrev").onclick=(e)=>{e.stopPropagation();goPrev();};$("sPrev").onclick=goPrev;
+$("btnShuffle").onclick=()=>{setShuffle(!S.shuffle);toast(S.shuffle?"셔플 켬 — 목록을 섞어 그 차례로":"셔플 끔 — 목록 순서대로",2200,"ok");};
+function setShuffle(on,save){S.shuffle=!!on;$("btnShuffle").classList.toggle("on",S.shuffle);
+  if(save!==false){S.settings.shuffle=S.shuffle;S.cfgHold=Date.now()+1500;
+    api("/api/settings",{settings:{shuffle:S.shuffle}}).then(()=>qPull()).catch(()=>{});}   // 차례는 서버가 다시 만든다
+  else renderQueue();}
+/* 반복 세 단계 — 한 곡 → 전체 → 끔 */
+const REPEAT=[{v:"one",ic:"#ic-rep-one",t:"한 곡 반복 — 지금 곡만 계속"},{v:"all",ic:"#ic-rep",t:"전체 반복 — 목록 끝나면 처음으로"},{v:"off",ic:"#ic-rep-off",t:"반복 끔 — 목록 끝나면 정지"}];
+/* 반복·셔플은 **오버레이와 같은 값**이다 — 설정에 저장한다.
+   따로 놀던 때는 오버레이에서 「전체 반복」을 켜도 미니가 모른 채 목록 끝에서 멈췄다.
+   미니 쪽은 저장도 안 해서 켤 때마다 「끔」으로 돌아갔다. */
+function setRepeat(v,save){S.repeat=v;const r=REPEAT.find((x)=>x.v===v)||REPEAT[2];
+  $("repIcon").innerHTML=`<use href="${r.ic}"/>`;$("btnRepeat").title=r.t;$("btnRepeat").classList.toggle("on",v!=="off");
+  if(save!==false){S.settings.repeat=v;S.cfgHold=Date.now()+1500;api("/api/settings",{settings:{repeat:v}}).catch(()=>{});}}
+$("btnRepeat").onclick=()=>{const i=REPEAT.findIndex((x)=>x.v===S.repeat);const v=REPEAT[(i+1)%REPEAT.length].v;
+  setRepeat(v);toast(REPEAT.find((x)=>x.v===v).t,2200,"ok");};
+
+/* ── 설정 ──
+   설정은 **별개 페이지**다 (`settings.html`). 예전에는 이 창 안의 모달이었는데
+   항목이 늘면서 좁은 창에 다 들어가지 않았다. 같은 창에서 옮겨 가고 「← 돌아가기」로 돌아온다.
+   옮겨 가는 동안 「창이 닫혔다」로 오해받지 않게 아래 pagehide 에서 신호를 보내지 않는다. */
+function openSettings(){goingInside=true;location.href="/folio/settings.html";}
+$("btnSet").onclick=openSettings;
+/* 연주 인사는 **따로 있는 페이지**다 (설정 안이 아니라 도구줄에 자기 단추로) */
+$("btnGreet").onclick=()=>{goingInside=true;location.href="/folio/greet.html";};
+/* 연결 끊기 — 밖에서 볼 때만 보인다. 이 기기가 들고 있던 쪽지·기기 열쇠·PC 주소를 전부 지우고
+   잇기 화면으로 돌아간다. PC 쪽 쪽지도 같이 무효로 만든다 (그냥 지우면 12시간 동안 살아 있다). */
+/* 단추는 늘 숨김 — ☰ 메뉴의 「연결 끊기」가 이 동작을 부른다 */
+$("btnOut").hidden=!REMOTE;
+$("btnOut").onclick=async()=>{
+  if(!await MF.ask({title:"연결 끊기",
+    text:"이 기기에 저장된 연결을 지웁니다. 다시 쓰려면 PC 에서 코드를 새로 받아야 합니다.",
+    ok:"끊기",danger:true}))return;
+  // **MF.api 를 쓰지 않는다** — 그쪽은 앞에 /api/folio/ 를 붙이고, 서버는 폴리오 쪽 remote/* 를
+  // 넘기지 않는다(늘 404). 이 길은 모비웍스 문 앞(server.py `/api/remote/logout`)이고 쪽지 헤더로 끊는다.
+  const ses=MF.session()||{};
+  try{await fetch((ses.url||"")+"/api/remote/logout",{method:"POST",mode:"cors",
+    headers:{"Content-Type":"application/json","X-Requested-With":"mobiworks","X-MobiWorks-Remote":ses.token||""},body:"{}"});}
+  catch(e){/* PC 가 꺼져 있어도 이 기기 것은 지운다 */}
+  MF.forget();
+  goingInside=true;                       // 창이 닫힌다는 신호를 보내지 않게
+  location.replace("/");                  // 뒤로 가기로 돌아오지 못하게
+};
+
+/* 업데이트는 **모비웍스 설정**에서 한다 (∞ → 설정). 폴리오 쪽 길(/api/folio/update/*)은 서버가
+   넘기지 않아(FOLIO_NEVER_PREFIX) 여기 있던 알림 줄은 늘 404 였다 — 걷어냈다. */
+/* ── 시작 ── */
+(async()=>{setRepeat("off",false);await refreshState();await loadAll();
+  // 시작할 때 자동 갱신은 **이 PC 에서만** — 폰은 방금 받은 것이 곧 PC 가 읽은 값이다
+  if(S.settings.auto_sync&&!REMOTE&&S.cliOk)$("btnSync").click();
+  // 「게임에서 이미 연주 중인가」 — 이 PC 는 게임에 묻고(`/api/activity`), 폰은 PC 감시 스레드가 마지막으로 본 값(`/api/now` 의 perf)으로 같은 판정을 한다
+  if(S.cliOk){let p=null;
+    if(REMOTE){const nw=await api("/api/now");p=nw&&nw.ok!==false&&nw.perf?nw.perf:null;}
+    else{const a=await api("/api/activity");p=a&&a.ok&&a.body&&a.body.Performance;}
+    if(p&&p.IsPlaying){S.now={key:"",title:"",song:p.MusicTitle||"게임에서 재생 중",artist:""};S.playing=true;S.startedAt=Date.now()-(p.ElapsedSeconds||0)*1000;S.gen++;setNow(S.now.song,"게임에서 재생 중");setMain(true);startPoll();}}
+  await qPull(true).catch(()=>{});             // 서버가 들고 있는 대기열을 그대로 이어받는다 (보기는 그대로)
+  if(S.queue.length&&S.qi>=0){const nw=await api("/api/now");
+    if(nw&&nw.playing){const it=S.queue[S.qi];const lib=it?libOf(it):null;
+      S.now={key:(it||{}).key||"",title:(it||{}).title||"",song:lib?(lib.song||lib.cleaned):((it||{}).song||nw.title),artist:(lib&&lib.artist)||""};
+      S.playing=true;S.startedAt=Date.now()-(nw.el||0)*1000;S.gen++;setMain(true);setNow(S.now.song,"재생 중");startPoll();}}
+  ovSync().catch(()=>{});setInterval(()=>ovSync().catch(()=>{}),5000);
+  setInterval(()=>cfgSync().catch(()=>{}),3000);
+  setInterval(refreshState,15000);})();
+</script>
+<script src="/js/shell.js"></script>
+</body>
+</html>

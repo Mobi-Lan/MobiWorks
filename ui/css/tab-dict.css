@@ -1,0 +1,136 @@
+/* tab-dict.css — 사전 탭 (380×620 기준).
+   색은 전부 tokens.css 토큰 (디자인 hex → 토큰 대응):
+     #e2b866 → --gold · #1a1608 → --ongold · rgba(226,184,102,.5) → color-mix(--gold 50%) · #23303f → --line2 ·
+     #16202c/#131c27/#1e2a38 → --line · #111a26 → --card · #f4e7c8 → --strong · #e9ecf1 → --fg · #c2cad4 → --fg2 ·
+     #9aa3b2/#8b97a6 → --sub · #6f7a8a → --sub2 · #5c6878 → --dim · #7ee6a0 → --ok · #f5b8c8 → --bad2 ·
+     rgba(232,138,166,.16) → --badbg · rgba(63,181,107,.16) → --okbg · #9dbcf2/rgba(122,162,232,.16) → --run/--runbg ·
+     #f0a35a/rgba(240,163,90,.16) → --warn/--warnbg
+
+   마크업은 **한 벌**이다 (tab-dict.js). 좁은 폭(≤600, 맨 아래 @media 블록)이 3줄 행이고,
+   넓은 폭은 같은 행을 열로 펼친 표다 — .dc1{display:contents} 로 ①②③ 이 격자 칸이 된다.
+   #dictHead(2등분 소탭 → 출처·확인 세그먼트 → 통계) 와 #dictFoot(⋯ 메뉴) 는 tab-dict.js 가 #tabCard 에 끼운 노드.
+   #tabCard 는 재고·사전이 같이 쓰므로 **재고 탭에서는 여기서 숨긴다** (tab-stock.css 가 제 것을 사전 탭에서 숨기는 것과 짝). */
+
+#tabStock #dictHead,#tabStock #dictFoot{display:none}
+
+/* ── 머리: 소탭 2등분 → 세그먼트 한 줄 → 통계 한 줄 (gap 7 · padding 9 10 8 · 아래 1px 선) ── */
+#dictHead{display:flex;flex-direction:column;gap:7px;padding:9px 14px 8px;border-bottom:1px solid var(--line);background:var(--card);min-width:0}
+/* 레시피 → 재료 / 재료 → 쓰이는 곳 — 2등분 (높이 28 · radius 8 · 11px · 활성 골드 채움). 넓은 폭에선 폭만 묶는다 */
+.dsub{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line2);border-radius:8px;overflow:hidden;font-size:11px;max-width:380px}
+.dsub button{border:none;border-radius:0;height:28px;padding:0 6px;color:var(--sub);font-size:11px;white-space:nowrap;background:transparent}
+.dsub button.on{background:var(--gold);color:var(--ongold);font-weight:700}
+/* 출처 · 확인 세그먼트 한 줄 (라벨 9px · 세그먼트 높이 24 · padding 0 8 · 10px · radius 7 · 한 줄에 넘치면 자름) */
+.dsegs{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;overflow:hidden;min-width:0}
+.dsegs .dl{font-size:9px;color:var(--sub2);white-space:nowrap;flex:none}
+.dsg{display:flex;align-items:center;gap:6px;flex:none;min-width:0}
+.dseg{display:flex;border:1px solid var(--line2);border-radius:7px;overflow:hidden;font-size:10px;line-height:1;flex:none}
+.dseg button{border:none;border-radius:0;height:24px;padding:0 8px;color:var(--sub);font-size:10px;white-space:nowrap;background:transparent}
+.dseg button.on{background:var(--gold);color:var(--ongold);font-weight:700}
+.dsegs .grow{flex:1;min-width:0}
+.dlink{font-size:var(--fs-xs);padding:3px 9px;border-radius:5px;border:1px solid var(--line2);color:var(--fg2);text-decoration:none;white-space:nowrap;flex:none}
+.dlink:hover{border-color:var(--sub);color:var(--fg)}
+/* 통계 한 줄 (9px · 레시피 수만 Mono 밝게 · ✓확인 초록) */
+.dstat{font-size:9px;color:var(--sub2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dstat b{font-weight:400;color:var(--fg2)}
+.vf{white-space:nowrap}
+.vf.ok{color:var(--ok)}
+.vf.ms{color:var(--warn)}
+.dwarn{padding:7px 14px;font-size:var(--fs-sm);color:var(--warn);background:var(--warnbg2);border-bottom:1px solid var(--warnline)}
+
+/* ── 레시피 행. 넓은 폭: 종류 | ①이름 | ②재료 | ③출처·확인 | 담기 (①②③ 은 좁은 폭에서 세로 3줄이 된다) ── */
+.dlist{display:flex;flex-direction:column;min-width:0}
+.drow{display:grid;grid-template-columns:44px minmax(0,1.1fr) minmax(0,1.4fr) 170px 60px;gap:9px;align-items:center;padding:7px 14px;border-bottom:1px solid var(--line);min-width:0}
+.drow .dc1{display:contents}
+.drow:hover{background:var(--card2)}
+.drow.focus{background:var(--card2);box-shadow:inset 2px 0 0 var(--gold)}
+.drow.hd{position:sticky;top:0;z-index:2;height:28px;padding:0 14px;font-size:var(--fs-xs);color:var(--sub);background:var(--card);border-bottom:1px solid var(--line2)}
+.drow.hd:hover{background:var(--card)}
+/* 종류 칩 (높이 20 · padding 0 6 · radius 5 · 10px 700 · 제작 파랑 / 가공 주황 — 큐 카드와 같은 의미색) */
+.dkind{display:inline-flex;align-items:center;justify-content:center;height:20px;padding:0 6px;border-radius:5px;font-size:10px;font-weight:700;white-space:nowrap;background:var(--runbg);color:var(--run)}
+.dkind.alter{background:var(--warnbg);color:var(--warn)}
+/* ① 이름 ×n · 상태 칩 (이름 13px 700 · ×n Mono 10px · 칩 높이 16 · padding 0 5 · radius 4 · 9px 700) */
+.drow .dl1{display:flex;align-items:baseline;gap:5px;min-width:0}
+.drow .nm{font-size:13px;font-weight:700;color:var(--strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.drow .per{font-size:10px;color:var(--sub2);flex:none}
+.dst{display:inline-flex;align-items:center;height:16px;padding:0 5px;border-radius:4px;font-size:9px;font-weight:700;white-space:nowrap;flex:none}
+.dst.ok{background:var(--okbg);color:var(--ok)}
+.dst.bad{background:var(--badbg);color:var(--bad2)}
+.dst.warn{background:var(--warnbg);color:var(--warn)}
+.dst.unk{border:1px solid var(--line2);color:var(--sub2)}
+.dpath{font-size:9px;color:var(--sub2);white-space:nowrap;flex:none;border:1px solid var(--line2);border-radius:4px;padding:0 4px}
+/* ② 재료 (10px · 기본 --sub · **부족분만 빨강**) — 한 줄, 넘치면 말줄임. 재료를 누르면 「쓰이는 곳」으로 */
+.drow .dl2{font-size:10px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dmi{cursor:pointer}
+.dmi:hover{color:var(--fg)}
+.dmi.short{color:var(--bad2)}
+.dunk{color:var(--sub2)}
+.dfac{color:var(--sub)}
+/* ③ 출처 · 관찰 수 · 확인 (9px --sub2) */
+.drow .dl3{font-size:9px;color:var(--sub2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+/* 담기 (높이 30 · min-width 44 · padding 0 9 · radius 15 · 11px 700 — 가능 골드 채움 / 부족 골드 외곽선) */
+.drow .dgo{justify-self:end}
+.dadd{display:inline-flex;align-items:center;justify-content:center;height:30px;min-width:44px;padding:0 9px;border-radius:15px;font-size:11px;font-weight:700;white-space:nowrap}
+.dadd.go{background:var(--gold);border:1px solid var(--gold);color:var(--ongold)}
+.dadd.go:hover{background:var(--goldhover);border-color:var(--goldhover)}
+.dadd.line{background:transparent;border:1px solid color-mix(in srgb,var(--gold) 50%,transparent);color:var(--gold)}
+.dadd.line:hover{background:var(--goldwash);border-color:var(--gold)}
+.dadd:disabled,.dadd.line:disabled{border-color:var(--line2);color:var(--dim);background:transparent;cursor:default}
+
+/* ── 재료 → 쓰이는 곳. 넓은 폭: 재료·보유 | 쓰이는 곳 칩 ── */
+.irow{display:grid;grid-template-columns:260px minmax(0,1fr);gap:9px;align-items:start;padding:9px 14px;border-bottom:1px solid var(--line);min-width:0}
+.irow:hover{background:var(--card2)}
+.irow.focus{background:var(--card2);box-shadow:inset 2px 0 0 var(--gold)}
+.irow.hd{position:sticky;top:0;z-index:2;align-items:center;height:28px;padding:0 14px;font-size:var(--fs-xs);color:var(--sub);background:var(--card);border-bottom:1px solid var(--line2)}
+.irow.hd:hover{background:var(--card)}
+/* 재료 이름 · 보유 · 쓰이는 곳 n (이름 13px 700 · 보유 10px 라벨 + Mono 밝은 수 · 「쓰이는 곳 n」 9px 오른쪽) */
+.irow .dl1{display:flex;align-items:baseline;gap:6px;min-width:0}
+.irow .nm{font-size:13px;font-weight:700;color:var(--strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.irow .dih{font-size:10px;color:var(--sub);white-space:nowrap;flex:none}
+.irow .dih b{font-weight:400;color:var(--fg)}
+.irow .grow{flex:1;min-width:0}
+.irow .dun{font-size:9px;color:var(--sub2);white-space:nowrap;flex:none}
+/* 쓰이는 레시피 칩 (높이 22 · padding 0 8 · radius 11 · 10px · 종류 라벨 9px 700 색 · ×n Mono) */
+.irow .dl2{display:flex;gap:5px;flex-wrap:wrap;min-width:0}
+.duse{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:11px;background:var(--card);border:1px solid var(--line);font-size:10px;color:var(--fg2);white-space:nowrap;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.duse:hover{border-color:var(--sub)}
+.duse .dk{font-size:9px;font-weight:700;color:var(--run)}
+.duse .dk.alter{color:var(--warn)}
+.duse .mono{color:var(--sub2)}
+/* 「외 n ▾」 — 칩이 DCHIP_MAX 개를 넘는 재료만 (tab-dict.js irowHTML). 칩과 같은 높이 · 골드 글자 · 외곽선만 */
+.dmorec{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:11px;background:transparent;border:1px dashed var(--line2);font-size:10px;color:var(--gold);white-space:nowrap;cursor:pointer}
+.dmorec:hover{border-color:var(--gold)}
+
+/* ── 발: ⋯ 메뉴 — 넓은 폭에선 「JSON 내보내기」가 세그먼트 줄 오른쪽에 있으므로 발이 없다. 좁은 폭에서만 켠다 ── */
+#dictFoot{display:none}
+.dmore{width:34px;height:30px;padding:0;border-radius:8px;font-size:16px;line-height:1;color:var(--fg2)}
+.dmenu{position:absolute;right:10px;bottom:calc(100% + 6px);display:flex;flex-direction:column;padding:6px;border:1px solid var(--line2);border-radius:10px;background:var(--card);box-shadow:0 12px 32px var(--shadow);z-index:5}
+.dmenu .dlink{display:block;border:none;padding:8px 12px;font-size:var(--fs-sm)}
+.dfnote{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+
+/* ── 좁은 폭 (≤600): 검색 전폭 · 3줄 행 · 담기 오른쪽 · 내보내기는 하단 ⋯ 로 ── */
+@media (width < 600px){
+  /* 검색(전폭) — 공용 줄(#filterRow)에서 검색만 남기고 요약·정렬 자리를 비운다 (높이 34 · radius 9 · 카드색) */
+  #tabDict #filterRow{padding:9px 10px 0;border-bottom:none}
+  #tabDict #filterRow .qwrap{width:100%}
+  #tabDict #filterRow #q{height:34px;border-radius:9px;background:var(--card);border-color:var(--line2)}
+  #tabDict #filterRow>.grow,#tabDict #tabSum,#tabDict #sortLbl,#tabDict #sortSeg{display:none}
+  #dictHead{padding:7px 10px 8px}
+  .dsub{max-width:none}
+  #dictHead .dlink{display:none}   /* 「JSON 내보내기」는 하단 ⋯ 메뉴로 */
+  /* 레시피 행 = 3줄: 종류 | ①②③ 세로 | 담기 (grid auto 1fr auto · gap 9 · padding 9 10 · 줄 사이 3) */
+  .drow{grid-template-columns:auto minmax(0,1fr) auto;gap:9px;align-items:start;padding:9px 10px}
+  .drow .dc1{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .drow.hd{display:none}
+  .drow .dkind{margin-top:1px}
+  .drow .dgo{align-self:center}
+  /* 재료 행: 이름·보유·쓰이는 곳 n 한 줄, 그 아래 칩 (세로 gap 5 · padding 9 10) */
+  .irow{display:flex;flex-direction:column;gap:5px;padding:9px 10px}
+  .irow.hd{display:none}
+  /* 하단 ⋯ 메뉴 */
+  #dictFoot{display:flex;align-items:center;gap:8px;position:relative;padding:6px 10px;border-top:1px solid var(--line);background:var(--card);font-size:var(--fs-eyebrow);color:var(--sub2)}
+}
+/* ── 380 보다 좁은 창 (300px 에서 「확인」 세그먼트의 「미확인」 이 잘렸다) ──
+   한 줄에 못 들어가면 「확인」 묶음을 둘째 줄로 내린다. 자르지 않는다 — 잘린 버튼은 누를 수 없다 */
+@media (max-width: 360px){
+  .dsegs{flex-wrap:wrap;row-gap:6px}
+}

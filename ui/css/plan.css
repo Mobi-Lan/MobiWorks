@@ -1,0 +1,42 @@
+/* plan.css — 계획 팝업(dialog#plan): 재료 카드·스테퍼·담기 버튼·인라인 폼 */
+/* 계획 패널 */
+/* 계획 팝업: 설정 창과 같은 규격(테두리·둥근 모서리·backdrop·최대 560px), 세로는 내용대로 최대 85vh 안에서 본문만 스크롤 */
+#plan{max-height:85vh}
+#plan[open]{display:flex;flex-direction:column}
+#plan.enough{border-color:var(--ok)}
+#plan .dlg-h{align-items:flex-start;font-weight:400}
+#plan .pt{display:flex;flex-direction:column;gap:4px;min-width:0}
+#plan .eyebrow{font-size:11px;letter-spacing:.1em;color:var(--gold3)}
+#plan .pname{font-size:17px;font-weight:700;color:var(--gold2)}
+#plan .psub{font-size:12px;color:var(--sub)}
+#plan .dlg-b{overflow:auto;min-height:0;flex:1}
+#plan .ph{font-size:11px;color:var(--sub);letter-spacing:.08em;display:flex;justify-content:space-between}
+.ing{display:flex;flex-direction:column;gap:4px;padding:10px 12px;background:var(--bg);border:1px solid var(--line2);border-radius:8px}
+.ing.unknown{border-style:dashed;opacity:.75}
+.ing .r1{display:flex;justify-content:space-between;font-size:13px;gap:8px}
+.ing .r1 .q{font-family:var(--mono)}
+.ing .tb{height:3px;background:var(--soft);border-radius:2px}
+.ing .tb i{display:block;height:100%;border-radius:2px;background:var(--bad)}
+.ing .tb i.ok{background:var(--ok)}
+.ing .r2{display:flex;justify-content:space-between;align-items:center;margin-top:4px;gap:6px;font-size:11px;color:var(--sub);flex-wrap:wrap}
+.ing .r2>span:first-child{flex:1 1 130px}   /* 필요분|최대 세그먼트가 넓어 좁은 패널에선 아랫줄로 */
+.pbtn{padding:4px 9px;font-size:11px;font-weight:600;border:1px solid var(--gold);color:var(--gold2);border-radius:6px;white-space:nowrap;background:transparent}
+.pbtn.dim{border-color:var(--line);color:var(--dim);font-weight:400;cursor:default}
+.pbtn.gold{background:var(--gold);color:var(--goldOn)}.pbtn:disabled{opacity:.4;cursor:default}
+/* 채집 담기 분기: 필요분 | 최대 (CLI 는 호출당 무조건 최대 100개) · 문맥 없으면 100개 × N회 */
+.gseg{display:inline-flex}.gseg .pbtn:first-child{border-radius:6px 0 0 6px}.gseg .pbtn:last-child{border-radius:0 6px 6px 0;border-left:0}
+.hint{font-size:10px;color:var(--sub2);white-space:nowrap;margin-left:4px}
+/* 담기 조각: 스테퍼 | 버튼 | 안내 를 고정 폭 3열로. inline-flex 로 두면 버튼 글자 길이
+   (「100개 × 1회 담기」 101px vs 「제작 1회 담기」 85px)와 안내 문구 유무만큼 스테퍼가 밀려
+   행마다 730/926/1024 로 흩어졌다.
+   버튼 118px 은 횟수가 999 까지 늘어도 글자가 잘리지 않는 폭이다. */
+.gloop{display:grid;grid-template-columns:auto 118px 76px;align-items:center;gap:6px}
+.gloop .pbtn{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 담기 버튼 묶음 (사전 담기 폼의 재료 행 · 계획 팝업의 재료 카드).
+   안내 문구가 없는 행에도 같은 자리를 비워 둬야 버튼 오른쪽 끝이 행마다 맞는다 */
+.dact,.ing [data-btns]{display:grid;grid-template-columns:auto 76px;align-items:center;gap:6px;justify-items:end}
+.gloop .hint,.dact .hint,.ing [data-btns] .hint{margin-left:0}
+.dfr{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.kplus{cursor:pointer;color:var(--gold);font-size:11px;padding:0 5px;border:1px solid var(--line2);border-radius:4px;margin-left:-3px}.kplus:hover{background:var(--soft)}
+.pall{padding:8px;font-size:13px;font-weight:600;text-align:center;border:1px solid var(--gold);color:var(--gold);border-radius:8px;background:transparent;width:100%}
+.pall small{color:var(--sub);font-weight:400;font-size:12px}

@@ -1,0 +1,92 @@
+/* list.css — 탭 카드 공통: 검색창·필터 줄(상태 세그먼트·분류 칩·초성 색인 접힘)·목록 행(.rc)·sticky 헤더·펼침·발
+   초성 색인 2줄 → 1줄 압축(접힘 토글), 상태 필터를 세그먼트로, 행 높이 56 → 44, 담기에 회수 */
+.qwrap{position:relative;display:inline-flex;width:320px;flex:none;max-width:100%}.qwrap input{padding-right:26px;width:100%}
+.qwrap .qx{position:absolute;right:4px;top:50%;transform:translateY(-50%);border:none;background:transparent;color:var(--sub);font-size:14px;padding:2px 6px;cursor:pointer}
+#filterRow{padding:10px 14px;border-bottom:1px solid var(--line);gap:8px}
+
+/* ── 필터 줄: 한 줄에 상태 세그먼트 · 분류 칩 · 초성 토글 ── */
+.chips{display:flex;flex-direction:column;padding:0}
+/* 세그먼트·분류 칩·초성 토글이 한 줄에서 흐르고, 넘치면 함께 줄바꿈된다(초성 토글은 늘 오른쪽 끝) */
+.chips .crow{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line)}
+.chips .vr{width:1px;height:16px;background:var(--line2);flex:none}
+.chips .cats{display:contents}   /* 칩이 .crow 의 직접 항목처럼 흐르게 */
+.chips .seg,.chips .idxbtn,.chips .inf,.chips .chip{flex:none}
+.chips .chip{font-size:12px;padding:3px 9px;border-radius:5px;border:1px solid var(--line2);background:transparent;color:var(--fg2);cursor:pointer;white-space:nowrap}
+.chips .chip:hover{border-color:var(--sub)}
+.chips .chip.on{border-color:var(--gold);color:var(--strong);background:var(--goldwash)}
+.chips .chip .n{color:var(--sub2)}.chips .chip.on .n{color:var(--sub)}
+.chips .chip:disabled{opacity:.3;cursor:default}
+.chips .inf{font-size:10px;padding:1px 6px;border-radius:6px;border:1px dashed var(--line3);color:var(--sub2)}
+/* 상태 세그먼트: 꺼져 있을 때도 의미색을 유지(가능 초록 · 재료 부족 주황 · 막힘 회색) */
+.stseg button{white-space:nowrap}
+.stseg button.st-ready{color:var(--ok)}
+.stseg button.st-short{color:var(--warn)}
+.stseg button.st-blocked{color:var(--sub)}
+.stseg button.on{background:var(--gold);color:var(--ongold);font-weight:600}
+/* 초성 색인: 평소엔 접힌 토글 하나, 열면 아래 줄에 펼친다 */
+.idxbtn{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:3px 9px;border-radius:5px;border:1px solid var(--line2);background:transparent;color:var(--sub);white-space:nowrap;cursor:pointer}
+.idxbtn:hover{border-color:var(--sub)}
+.idxbtn.on{border-color:var(--gold);color:var(--strong);background:var(--goldwash)}
+.idxbtn .cv{font-size:10px;color:var(--sub2)}
+.idxrow{padding:7px 14px;border-bottom:1px solid var(--line);background:var(--bg)}
+.idx{display:flex;flex-wrap:wrap;gap:2px}
+.idx span{font-family:var(--mono);font-size:11px;padding:2px 5px;border-radius:5px;cursor:pointer;color:var(--sub)}
+.idx span:hover{background:var(--soft)}
+.idx span.on{background:var(--gold);color:var(--ongold);font-weight:600}
+.idx span.zero{opacity:.3;cursor:default}
+
+/* ── 목록 (제작·가공·채집·재고·사전) ── */
+.list{display:grid;gap:0}   /* 스크롤은 #tabBody 가 맡는다 (카드 높이에 맞춤) */
+/* 패딩을 지운다: 있으면 sticky 헤더가 위에서 떨어지고 sticky 발이 아래에서 뜬다. 여백은 행(.rc)이 직접 준다 */
+#tabBody{padding:0}
+#tabBody>.lc-note{margin:8px 14px}
+/* 행 = 그리드. 제작·가공: ▸ | 이름+배지 | ×산출 | 상태 | 부족 재료 | 담기(회수 스테퍼+버튼) */
+.rc{display:grid;grid-template-columns:18px minmax(0,1.3fr) 60px 84px minmax(0,1fr) 152px;align-items:center;gap:10px;padding:0 14px;height:44px;cursor:pointer;border-bottom:1px solid var(--line);min-width:0}
+.rc.g{grid-template-columns:minmax(0,1fr) 84px auto}
+.rc:hover{background:var(--card2)}
+.rc.sel{background:var(--card2);box-shadow:inset 2px 0 0 var(--gold)}
+.rc .c1{display:flex;align-items:center;gap:8px;min-width:0}
+.rc .nm{font-weight:600;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rc .c1 .badge{flex:none}
+.rc .per{color:var(--fg2);text-align:right}
+.rc .num{font-family:var(--mono)}
+.rc .miss{display:flex;gap:4px;flex-wrap:nowrap;overflow:hidden;font-size:11px}
+.rc .miss .chip{padding:1px 7px;border-radius:4px;background:var(--warnbg);color:var(--warn);white-space:nowrap;font-family:var(--mono);border:none}
+.rc .miss .chip b{font-weight:600}
+.rc .miss .chip.why{background:var(--soft);color:var(--sub);font-family:var(--font)}   /* 막힘 행: 재료가 아니라 막힌 이유 */
+.rc .act{justify-self:end;display:flex;align-items:center;gap:4px}
+/* 헤더 행: 같은 그리드를 쓰되 높이만 줄인다 */
+.rc.hd{position:sticky;top:0;z-index:2;background:var(--card);font-size:11px;color:var(--sub);cursor:default;border-bottom:1px solid var(--line2);height:28px}
+.rc.hd:hover{background:var(--card)}
+.rc.hd .act{justify-self:end}
+.rc .tg{border:none;background:transparent;padding:0;color:var(--dim);font-size:10px;line-height:1;cursor:pointer;justify-self:start}
+.rc .tg.dim{opacity:.4;cursor:default}
+.rc .tg.open{transform:rotate(90deg)}
+/* 행 안 담기: 작은 스테퍼 + 버튼 (담기에 회수) */
+.radd{display:inline-flex;align-items:center;gap:4px}
+.radd .stepper{height:24px;grid-template-columns:22px 30px 22px;border-radius:6px}
+.radd .stepper>button{font-size:13px}
+.radd .stepper>*:nth-child(2){font-size:12px}
+.radd .pbtn{padding:4px 11px;font-size:12px;font-weight:600;border-radius:6px;white-space:nowrap}
+.radd .pbtn.gold{background:var(--gold);color:var(--ongold);border-color:var(--gold)}
+.radd .pbtn.gold:hover{background:var(--goldhover)}
+/* 펼침 줄 (확인된 재료) */
+.lc-sub{padding:6px 14px 10px 32px;display:flex;gap:6px;flex-wrap:wrap;font-size:12px;align-items:center;border-bottom:1px solid var(--line);background:var(--bg)}
+.kchip{font-size:11px;padding:2px 7px;border-radius:6px;background:var(--soft);color:var(--fg2);border:1px solid var(--line2)}
+.kchip.bad{background:var(--badbg);color:var(--bad2);border-color:transparent}.kchip.ok{background:var(--okbg);color:var(--ok);border-color:transparent}
+.kchip.hot{outline:2px solid var(--bad)}
+.kchip.warn{background:var(--warnbg);color:var(--warn);border-color:transparent}   /* 가방엔 없지만 창고에 있음 — 옮기면 됨 */
+/* 목록 발: 안내 · 「더 보기」 · 범위. 스크롤해도 카드 아래에 붙어 있게 sticky */
+.lfoot{position:sticky;bottom:0;z-index:2;display:flex;align-items:center;gap:8px;padding:7px 14px;border-top:1px solid var(--line);background:var(--card);font-size:11px;color:var(--sub2)}
+.lfoot .rng{font-family:var(--mono);white-space:nowrap}
+.lfoot .ft{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lc-note{font-size:12px;color:var(--sub);padding:6px 10px;border-radius:7px;background:var(--bg);border:1px solid var(--line2);margin-bottom:8px}
+.lc-more{text-align:center;padding:8px}
+.dg{border:1px solid var(--line2);border-radius:8px;padding:6px 8px;display:grid;gap:4px}   /* 동명 경로 묶음 */
+.dg>.h{padding:2px 2px 4px}
+.dg .dr{padding:6px 8px}
+/* 좁은 창: 부족 재료·산출 열을 접는다 (탭 카드에는 컨테이너가 없어 창 폭 기준) */
+@media (max-width:1100px){
+  .rc{grid-template-columns:18px minmax(0,1fr) 72px 152px;gap:8px}
+  .rc .per,.rc .miss,.rc.hd .per,.rc.hd .miss{display:none}
+}

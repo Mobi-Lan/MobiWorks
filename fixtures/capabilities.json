@@ -1,0 +1,199 @@
+{
+ "commands": [
+  {
+   "Command": "capabilities",
+   "Description": "List available commands",
+   "BodyExample": "",
+   "OutputExample": "{ commands: [...] }. When loading: true is included, the catalog is not fully ready yet; re-query after the user has entered the game."
+  },
+  {
+   "Command": "get_current_environment",
+   "Description": "Query current location / weather / time",
+   "BodyExample": "",
+   "OutputExample": "{ ChannelDisplayName, GameSpaceDisplayName, WorldPosition, Weather, ErinnNow, Housing: { IsInHousing, IsOwnedHousing, CanEnterHousing, CannotEnterHousingReason, CanExitHousing } }. Housing = whether I am inside a My Home, whether it is mine, whether I can go to my own My Home now, and whether I can leave the current one.",
+   "Note": "ErinnNow is the in-game time (Erinn calendar)."
+  },
+  {
+   "Command": "write_chat",
+   "Description": "Send a chat message",
+   "BodyExample": "안녕하세요",
+   "OutputExample": "success: status accepted, body { message } / failure: status invalid_body, body { error, message } (message_too_long also includes length) / failure: status rejected, body { error: unsupported_command, message } for reserved '/' or '#' commands that are not behaviors or facials / failure: status rejected, body { error: rate_limited, message, retryAfterSeconds }; retry after retryAfterSeconds",
+   "Note": "Max 50 chars, raw string (not JSON). Accepts normal chat, a behavior command exactly as listed in get_social_actions ChatCommands (e.g. /전통댄스, /손인사1; display names such as /춤 or /인사 are NOT commands), or a facial's EmojiText. Other reserved commands (channel switching such as /지역 or /파티, emergency escape, passcode #...) and unrecognized '/' commands are rejected as unsupported_command. When rate_limited, wait retryAfterSeconds before retrying. Behavior and facial commands are executed instead of shown as chat. Related: get_social_actions",
+   "Metadata": {
+    "requiresConfirm": "true"
+   }
+  },
+  {
+   "Command": "get_activity",
+   "Description": "Query current auto-play / travel / combat / action state",
+   "BodyExample": "",
+   "OutputExample": "autoPlay: { IsAutoPlaying, CanStartAutoPlay, AutoPlayTarget, AutoPlayTargetDisplayName }. AutoPlayTarget = none, quest, goddess_mission, shortcut, division_objective, recommended_activity, guide_mission. When naming the target category, use AutoPlayTargetDisplayName verbatim; if it is absent, do not translate AutoPlayTarget and omit the category / autoTravel: { IsAutoTraveling, AutoTravelRemainingPositionCount } / combatState: { IsDead, IsReviving, IsInCombat } / dialogue: { IsDialoguePlaying, IsDialogueNextAvailable, IsWaitingForSelection } / Dungeon: { State, IsBossBattleInProgress }. State = NotInDungeon, Entering, InProgress, Cleared / Battlefield: { IsInBattleField } / IsAbyssResultSequencePlaying / Tutorial: { IsPlaying } / Scenario: { IsInScenario, IsSequencePlaying } / Performance: { IsPlaying, InstrumentName, MusicTitle, IsCopyingAllowed, IsLoop, StartAt, TotalDurationSeconds, ElapsedSeconds, RemainingSeconds, ChannelCount }. InstrumentName = display name of my equipped instrument; empty when none is equipped / Interaction: { HasTarget, IsTargetAttackable, AvailableInteractionType, LastRunningInteractionType, TargetKind }. What the character can interact with right now. HasTarget = something is targeted in front. AvailableInteractionType = e.g. Gathering or Talk, or None. TargetKind = DungeonEntrance, Elevator, Fountain, CutscenePlayProp, Gimmick, Prop, Actor, None / Mode: { MainButtonState, MountPartState, SitState, IsPlayingMiniGame, IsHousingEditMode }. MainButtonState = Hide, Stop, Combat, Interaction, Compass, ScenarioQTE, Fishing, FishingPull, Housing. MountPartState = None, Mounted, Dismounted, Spawned. SitState = None, Sitting; Sitting means sitting on a chair, which stop_action stops. /앉기 is not reflected in SitState"
+  },
+  {
+   "Command": "get_my_info",
+   "Description": "Query my character's basic info, stats, and current vitals",
+   "BodyExample": "",
+   "OutputExample": "{ Title, RealmName, Level, EnabledCombatJobDisplayName, CombatScore, LivingScore, AttractivenessScore, DecorScore, HealthMax, AttackPower, DefencePower, STR, DEX, INT, LUCK, WILL, ArcaneResistance, PaladinStats: { PaladinAttackPower, PaladinDefencePower, JusticePower, JudgementPower, OrderPower, BlessingPower }, Vitals: { HealthCurrent, HealthMax, ShieldAmount, ShieldMax, SatietyValue, SatietyMax, SatietyRatio, InventoryWeightCurrent, InventoryWeightMax, ActiveBuffCount } }. Every stat field is an object { DisplayName, Value }; use DisplayName verbatim as the stat name. Vitals = current condition (current HP/shield/satiety/bag weight and active buff count). Location/weather and housing are in get_current_environment; instrument performance and other live activity are in get_activity."
+  },
+  {
+   "Command": "get_quests",
+   "Description": "List Quest Tracker entries",
+   "BodyExample": "",
+   "OutputExample": "array of { QuestTitle, Source, SourceDisplayName, Objectives[] }. Returns only currently visible and executable Quest Tracker items. Source: main, pinned_sub, auto_register_sub, auto_register_candidate_sub, event, goddess_mission, shortcut, division_objective, guide_mission, recommended_activity. When naming the category, use SourceDisplayName verbatim; for items without it, do not translate Source and describe by the quest title only. Objectives: { Description, IsCompleted, Count, Goal }",
+   "Note": "Returns only items in the active Quest Tracker tab."
+  },
+  {
+   "Command": "get_currencies",
+   "Description": "Query my main currency balances",
+   "BodyExample": "",
+   "OutputExample": "array of { DisplayName, Amount }"
+  },
+  {
+   "Command": "get_near_npcs",
+   "Description": "Query nearby talkable NPCs",
+   "BodyExample": "",
+   "OutputExample": "array of { Name, Title, DisplayName, Distance }",
+   "Note": "Search radius 30. Returns only talkable NPCs and NPC companions."
+  },
+  {
+   "Command": "get_near_pcs",
+   "Description": "Query nearby players",
+   "BodyExample": "",
+   "OutputExample": "array of { RealmName, Title, Distance, ClothesCount, CrowdAppearanceColorCount, IsRobeWeared, IsHoodOn, IsWeaponHidden, Level, EnabledCombatJobDisplayName, CombatScore, LivingScore, AttractivenessScore, IsFriend, IsInParty, HasGuild, IsSameGuild, IsCoOwner, IsInCombat, Performance }. IsCoOwner = co-owner of the My Home I am currently in; always false outside a My Home. Performance: { IsPlaying, MusicTitle, IsCopyingAllowed, IsLoop, StartAt, TotalDurationSeconds, ElapsedSeconds, RemainingSeconds, ChannelCount }. IsLoop is the current loop setting. MusicTitle/IsCopyingAllowed/StartAt/TotalDurationSeconds/ElapsedSeconds are only set when IsPlaying is true; RemainingSeconds is only set when TotalDurationSeconds > 0",
+   "Note": "Search radius 30. Related: write_chat"
+  },
+  {
+   "Command": "get_inventory",
+   "Description": "Query current/max inventory weight",
+   "BodyExample": "",
+   "OutputExample": "{ CurrentInventoryWeight, CurrentInventoryWeightAsDecimal, MaxInventoryWeight, MaxInventoryWeightAsDecimal }",
+   "Note": "For the item list use get_items. Related: get_items, get_music_scores"
+  },
+  {
+   "Command": "get_music_scores",
+   "Description": "List owned music scores",
+   "BodyExample": "",
+   "OutputExample": "array of { Location, DisplayTitle, IsCopyingAllowed, IsLocked }. Location: inventory, account_storage, character_storage",
+   "Note": "The body filter (raw string) is matched against the title; case-insensitive substring. Empty body returns everything. Related: play_music_score, get_inventory"
+  },
+  {
+   "Command": "play_music_score",
+   "Description": "Start playing a music score",
+   "BodyExample": "{\"title\":\"<DisplayTitle from get_music_scores>\"}",
+   "OutputExample": "success: status accepted / failure: status invalid_body (missing title), rejected (error: not_found | no_instrument | not_available_on_combat | not_available_on_riding | not_available_on_dead | system_error)",
+   "Note": "title: string (DisplayTitle from get_music_scores). If multiple scores share the title, one of them is played. Returns rejected with no_instrument / not_available_on_combat / not_available_on_riding / not_available_on_dead when playing is not possible, and system_error for other failures. Related: get_music_scores"
+  },
+  {
+   "Command": "get_instruments",
+   "Description": "List owned instruments",
+   "BodyExample": "",
+   "OutputExample": "array of { Name, Durability, IsEquipped }. IsEquipped marks the instrument currently equipped and used when playing a music score",
+   "Note": "The body filter (raw string) is matched against the name; case-insensitive substring. Empty body returns everything. Playing a music score requires an equipped instrument (IsEquipped); if none is equipped play_music_score is rejected with no_instrument, so equip one first with change_instrument. Related: change_instrument, play_music_score"
+  },
+  {
+   "Command": "change_instrument",
+   "Description": "Equip (change to) an owned instrument",
+   "BodyExample": "{\"name\":\"<Name from get_instruments>\"}",
+   "OutputExample": "success: status accepted / failure: status invalid_body (missing name), rejected (error: not_found | is_playing_instrument | not_available_on_dead | level_requirement | invalid_target | failed_unequip | system_error)",
+   "Note": "name: string (Name from get_instruments). If multiple owned instruments share the name, one of them is equipped. Rejected with is_playing_instrument while playing, not_available_on_dead when dead, and level_requirement when the level is not enough. Requesting the already equipped instrument returns accepted. Related: get_instruments, play_music_score"
+  },
+  {
+   "Command": "get_items",
+   "Description": "List owned items and their counts (bag / account storage / character storage), including gathered materials and foods",
+   "BodyExample": "{\"category\":\"Ingredient\",\"name\":\"<part of the name, optional>\"}",
+   "OutputExample": "array of { DisplayName, Category, CategoryDisplayName, Count, Location, IsLocked }. Location: inventory, account_storage, character_storage. Category examples: Food, Ingredient, Consumable, Consumable_Box, Consumable_Growth, Quest. When naming the category, use CategoryDisplayName verbatim.",
+   "Note": "Covers consumable-category items (foods, materials, gathered items, etc.); not equipment/costume/pet. Optional filters, both substring and case-insensitive: 'category' matches the inventory sub-category code (the English Category value), 'name' matches display name. Omit the body for the full list. Related: get_inventory"
+  },
+  {
+   "Command": "get_social_actions",
+   "Description": "List behaviors (Behaviours) and facials (Facials)",
+   "BodyExample": "",
+   "OutputExample": "{ Behaviours: [ { DisplayName, ChatCommands: [] } ], Facials: [ { DisplayName, EmojiText } ] }",
+   "Note": "The body filter (raw string) is matched against a behavior's name/ChatCommands or a facial's name/EmojiText; case-insensitive substring. Empty body returns everything. Execute by sending a behavior's ChatCommands or a facial's EmojiText via write_chat. Related: write_chat"
+  },
+  {
+   "Command": "stop_action",
+   "Description": "Stop the current stoppable action (instrument performance, chair sitting, auto-play, carrying, gathering)",
+   "BodyExample": "",
+   "OutputExample": "success: status accepted, body { message } / failure: status rejected, body { error, message }. error: invalid_state (nothing stoppable in progress), timeout",
+   "Note": "Works only while a stoppable action is in progress (the in-game Stop button is showing); otherwise it rejects with invalid_state. Sitting (/앉기) has no Stop button; use stand_up for that. Related: stand_up, get_activity"
+  },
+  {
+   "Command": "stand_up",
+   "Description": "Stand up from sitting (/앉기)",
+   "BodyExample": "",
+   "OutputExample": "success: status accepted, body { message } / failure: status rejected, body { error, message }. error: not_sitting, no_control_object, timeout",
+   "Note": "Works only while sitting (/앉기); otherwise it rejects with not_sitting. get_activity SitState does not indicate /앉기. Standing up is not possible until the sit-down motion has finished, so after a timeout right after sitting, retry shortly. To stop other actions (instrument, auto-play, carrying) use stop_action. Related: stop_action"
+  },
+  {
+   "Command": "get_daily_missions",
+   "Description": "List active daily missions for my character with goals, progress, and completion state",
+   "BodyExample": "",
+   "OutputExample": "success: status accepted, body: array of { Title, Description, CurrentCount, GoalCount, IsCompleted, IsRewardReceived, HasShortcut } / failure: status rejected, body { error, message }",
+   "Note": "HasShortcut indicates whether the mission supports an auto-play shortcut. Related: get_weekly_missions"
+  },
+  {
+   "Command": "get_weekly_missions",
+   "Description": "List active weekly missions for my account with goals, progress, and completion state",
+   "BodyExample": "",
+   "OutputExample": "success: status accepted, body: array of { Title, Description, CurrentCount, GoalCount, IsCompleted, IsRewardReceived, HasShortcut } / failure: status rejected, body { error, message }",
+   "Note": "HasShortcut indicates whether the mission supports an auto-play shortcut. Related: get_daily_missions"
+  },
+  {
+   "Command": "get_gatherable_items",
+   "Description": "List every gatherable item whose living-skill level requirement is met, with tool availability",
+   "BodyExample": "통나무",
+   "OutputExample": "{ items: [{ DisplayName, ToolOk }] }",
+   "Note": "Only items whose living-skill level requirement is already met are listed; locked items are hidden, and naming one in execute_gathering returns insufficient_living_skill_level with the required level. ToolOk=false means the required tool is missing or its durability is 0. The body filter (raw string) is matched against the item name; case-insensitive substring. Empty body returns everything. Related: execute_gathering"
+  },
+  {
+   "Command": "execute_gathering",
+   "Description": "Gather a named item until the target quantity is reached, or start auto fishing for a fishing-only item",
+   "BodyExample": "{\"displayName\":\"<DisplayName from get_gatherable_items>\"}",
+   "OutputExample": "gathering success: status accepted, body { result: completed, gained, target } after gathering reaches its target / fishing success: status accepted, body { result: started } after auto fishing begins, with no gained or target because auto fishing has no goal / ended early: status accepted, body { result: stopped, gained, target, message } / interrupted after starting: status accepted, body { error: blocked | overweight | timeout | canceled | tool_broken, message, gained, target }; fishing omits gained/target in every stopped or error body; blocked also carries kind = the UI or state the user must resolve / rejected before starting: status rejected, body { error, message }. errors: not_found, no_route, insufficient_living_skill_level, overweight, tool_missing, tool_broken, required_consumable_missing, not_in_field, blocked / invalid body (displayName missing): status invalid_body",
+   "Note": "displayName must exactly match an item name from get_gatherable_items. One call gathers up to 100 of the named item, then stops; call again for more. When each attempt consumes a required item (e.g. an empty bottle), the cap is lowered to what the owned amount can cover; the cap actually applied is returned as target. The gathering spot is chosen automatically as the nearest one you can reach. That spot also yields its other drops, but gained and target count the named item only. For a fishing-only item, the character travels to a fishery, auto fishing is turned on, and the call returns as soon as fishing starts. Auto fishing has no target and never ends by itself; when the user has enough, end it with stop_action. The auto fishing setting stays on afterwards. If a UI or state that requires user input appears before or during gathering, the action stops and returns blocked with its kind; tell the user what to resolve before retrying. Related: get_gatherable_items, get_activity, get_quests, stop_action. Running this command consumes 5 정령의 날개. It is rejected with not_enough_currency when the user lacks it and with cost_payment_failed when payment fails; success bodies include cost, a sentence with the amount spent and the remaining balance."
+  },
+  {
+   "Command": "get_alterable_items",
+   "Description": "List altering recipes with alterability and missing ingredients; altering is separate from crafting (get_craftable_items), and extracts, spores, powders, silk, and lumber are made here",
+   "BodyExample": "버섯",
+   "OutputExample": "{ items: [{ DisplayName, Alterable, ProducedPerWork, Reason, MissingIngredients: [{ DisplayName, Required, Owned }] }] }. ProducedPerWork = items yielded by one altering work. Reason: insufficient_facility_level, not_enough_ingredient, ingredient_locked, insufficient_transfer_cost",
+   "Note": "The body filter (raw string) is matched against the recipe name OR any ingredient name; case-insensitive substring. Empty body returns everything. Altering is queue-based: start with execute_altering, watch progress with get_altering_works, and collect with complete_altering_work. Pass a returned DisplayName verbatim to execute_altering. Related: execute_altering, get_altering_works"
+  },
+  {
+   "Command": "get_altering_works",
+   "Description": "Query in-progress and completed altering works with remaining time",
+   "BodyExample": "",
+   "OutputExample": "{ completedCount, works: [{ DisplayName, FacilityName, State, IsCompleted, RemainingSeconds }] }. FacilityName = the facility's display name; works sharing it are collected together by one complete_altering_work call. State: NotStarted, InProgress, Completed. RemainingSeconds is 0 when completed. completedCount = works ready to collect.",
+   "Note": "Shows the altering queue across all facilities. When a work is completed (completedCount > 0), collect it with complete_altering_work. Related: execute_altering, complete_altering_work"
+  },
+  {
+   "Command": "execute_altering",
+   "Description": "Queue a named altering recipe, including travel to its facility",
+   "BodyExample": "{\"displayName\":\"<DisplayName from get_alterable_items>\"}",
+   "OutputExample": "success: status accepted, body.result 'started' after the work is queued; the facility UI is closed automatically / interrupted: status accepted, body { error, message }; blocked carries kind = the UI or state the user must resolve / rejected before starting: status rejected, body { error, message }. errors: not_found, not_available, requires_user_interaction (this recipe cannot be queued through this command; ask the user to start it in the game), insufficient_facility_level, not_enough_ingredient, ingredient_locked, insufficient_transfer_cost, blocked, overweight, not_in_field, facility_not_found / error after starting: status accepted, body { error: component_not_found | facility_not_found | blocked | timeout | canceled, message } or body { result: stopped_by_user } when travel to the facility is stopped before arrival / invalid body (displayName missing): status invalid_body",
+   "Note": "displayName must exactly match an item from get_alterable_items. Altering is asynchronous and queue-based: a successful call queues one work and does not produce the item immediately. This call blocks through travel and queue registration, then closes the facility UI. Check get_altering_works for remaining time and completion, then collect with complete_altering_work. If a UI or state that requires user input appears before or during the action, it stops and returns blocked with its kind; tell the user what to resolve before retrying. To queue N works, call again after each started response. Related: get_alterable_items, get_altering_works, complete_altering_work, get_activity. Running this command consumes 5 정령의 날개. It is rejected with not_enough_currency when the user lacks it and with cost_payment_failed when payment fails; success bodies include cost, a sentence with the amount spent and the remaining balance."
+  },
+  {
+   "Command": "complete_altering_work",
+   "Description": "Collect all completed altering works at one facility, including travel to it",
+   "BodyExample": "{\"displayName\":\"<DisplayName from get_altering_works>\"}",
+   "OutputExample": "success: status accepted, body { collected, rewards, criticalRewards, message } after all completed works at the selected facility are collected; the reward and facility UI are closed automatically / collection not confirmed after waiting: status accepted, body { error: timeout, message }; re-check with get_altering_works / interrupted: status accepted, body { error, message } (blocked | timeout | canceled; blocked carries kind = the UI or state the user must resolve) or body { result: stopped_by_user } when travel is stopped before arrival / rejected before starting: status rejected, body { error, message }. errors: no_altering, no_completed_work, not_found, no_completed_work_at_facility, not_completed_yet, blocked, overweight, not_in_field, facility_not_found / invalid body (displayName missing): status invalid_body",
+   "Note": "Collects all completed altering works at ONE facility only. This call blocks through travel, collection, and reward handling; after collection the reward and facility UI close automatically. The body displayName selects the facility: every completed work at the facility where that item is made is collected, and if that item itself is still in progress the call is rejected with not_completed_yet. To collect works across multiple facilities, call once per facility. If a UI or state that requires user input appears before or during the action, it stops and returns blocked with its kind; tell the user what to resolve before retrying. Related: get_altering_works, execute_altering."
+  },
+  {
+   "Command": "get_craftable_items",
+   "Description": "List crafting recipes with craftability and missing ingredients; altering recipes are in get_alterable_items",
+   "BodyExample": "거미줄",
+   "OutputExample": "{ craftingUnlocked: bool, items: [{ DisplayName, Craftable, ProducedPerCraft, Reason, MissingIngredients: [{ DisplayName, Required, Owned }] }] }. When craftingUnlocked is false the crafting system is not yet unlocked and items is empty. ProducedPerCraft = items yielded by ONE craft (craftCount 1). Reason: insufficient_living_skill_level, insufficient_facility_level, insufficient_decor_score, not_enough_ingredient, ingredient_locked, insufficient_transfer_cost",
+   "Note": "The body filter (raw string) is matched against the recipe name OR any ingredient name; case-insensitive substring, so sending '거미줄' also lists recipes that use it as an ingredient. Empty body returns everything. Craftable reflects living skill level, facility level, decor score, ingredient quantity, and ingredient transfer cost. Pass a returned DisplayName verbatim to execute_crafting. Related: execute_crafting"
+  },
+  {
+   "Command": "execute_crafting",
+   "Description": "Craft a named recipe, including travel to its facility and result collection",
+   "BodyExample": "{\"displayName\":\"<DisplayName from get_craftable_items>\",\"craftCount\":1}",
+   "OutputExample": "success: status accepted, body.result is 'completed' (craft completed; the result and facility UI are closed automatically; body also includes craftCount, rewards, and criticalRewards) or 'stopped_by_user' (the user ended crafting in the game before it completed; nothing new was produced) / interrupted or timed out after starting: status accepted, body { error, message }; blocked carries kind = the UI or state the user must resolve; timeout means the action was stopped; canceled means another command replaced this action / rejected before starting: status rejected, body { error, message }. errors: crafting_locked, not_found, not_available, invalid_count, insufficient_living_skill_level, insufficient_facility_level, insufficient_decor_score, not_enough_ingredient, ingredient_locked, insufficient_transfer_cost, blocked, overweight, not_in_field, facility_not_found. invalid_count also includes maxCount. / invalid body (displayName missing): status invalid_body",
+   "Note": "displayName must exactly match an item from get_craftable_items. craftCount is the NUMBER OF CRAFTS, not the number of output items: each craft yields get_craftable_items.ProducedPerCraft items. craftCount defaults to 1 and has a per-facility upper limit; exceeding it is rejected as invalid_count with maxCount. This call blocks through travel, crafting, and result collection. The result and facility UI close automatically after completion. If a UI or state that requires user input appears before or during the action, crafting stops and returns blocked with its kind; tell the user what to resolve before retrying. To make more items, call again after a completed response. Related: get_craftable_items, get_activity, get_quests. Running this command consumes 5 정령의 날개. It is rejected with not_enough_currency when the user lacks it and with cost_payment_failed when payment fails; success bodies include cost, a sentence with the amount spent and the remaining balance."
+  }
+ ]
+}

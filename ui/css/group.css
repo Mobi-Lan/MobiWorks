@@ -1,0 +1,148 @@
+/* group.css — 그룹 설정 창(dialog#groupDlg).
+   치수는 좁은 폭(380px 시트) 기준이다 — 손잡이 34×4 · 머리 6 12 9 · 요약 카드(margin 0 12 · padding 9 10 · radius 10 · 골드 35% 테두리) ·
+   진행 한 줄(막대 4px) · 「항목 n」 줄 9 12 7 · 네 탭(4등분 · 28px · radius 8) · 항목 행(격자 10px auto 1fr auto 20px · 8 9 · radius 9) ·
+   발 9 12 · 단추 32px. 넓은 폭은 같은 마크업을 가운데 팝업(max 640)으로 편다 — 값은 좁은 폭과 같다.
+   base.css 의 dialog[open]{display:flex;flex-direction:column} 위에서 본문(.dlg-b)만 스크롤, 머리·발은 flex:none.
+   색은 전부 tokens.css 변수 (hex 금지) — 디자인 hex → 토큰 대응은 tests/test_group_sheet.py 의 표. */
+#groupDlg{max-width:640px;width:min(640px,96vw);background:var(--card)}
+#groupDlg .dlg-b{padding:0;display:block}
+
+/* ── 손잡이 · 머리줄 (그룹 배지 · 제목 = 이름 입력칸 28px · ✕ 26px 원) ── */
+.g-grip{display:none;justify-content:center;padding:7px 0 0;flex:none}
+.g-grip span{width:34px;height:4px;border-radius:2px;background:var(--line3)}
+#groupDlg .g-hd{display:flex;align-items:center;gap:8px;padding:6px 12px 9px;border:0;background:transparent}
+#groupDlg .g-hd .badge{height:20px;display:inline-flex;align-items:center;padding:0 7px;border-radius:5px;font-size:var(--fs-eyebrow);font-weight:700}
+/* 제목 줄에서 바로 이름 편집 — 따로 있던 「이름」 입력칸은 없다 */
+.g-title{flex:1;min-width:0;display:flex;align-items:center;gap:6px;height:28px;padding:0 9px;border-radius:7px;border:1px solid var(--line2);background:var(--card2)}
+.g-title:focus-within{border-color:var(--gold)}
+.g-title input{flex:1;min-width:0;height:100%;border:0;padding:0;background:transparent;font:inherit;font-size:var(--fs-body);font-weight:700;color:var(--strong);outline:none}
+.g-title input:disabled{color:var(--sub)}
+.g-title .pen{color:var(--sub2);font-size:var(--fs-eyebrow);font-weight:400;flex:none}
+#groupDlg .g-hd .x{width:26px;height:26px;padding:0;border:1px solid var(--line2);border-radius:13px;background:transparent;color:var(--sub);font-size:var(--fs-xs);display:inline-flex;align-items:center;justify-content:center;flex:none}
+#groupDlg .g-hd .x:hover{color:var(--fg);border-color:var(--line3)}
+
+/* ── 요약 카드 한 장: 왼쪽 반복 회차 스테퍼 / 오른쪽 큰 숫자 3 + 보유 (auto 1fr · gap 10 · 9 10 · radius 10 · 골드 35%) ── */
+.g-sum{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;margin:0 12px;padding:9px 10px;border-radius:10px;
+  background:var(--card2);border:1px solid color-mix(in srgb,var(--gold) 35%,transparent)}
+.g-sum .rep{display:flex;flex-direction:column;gap:4px}
+.g-sum .rep .k{font-size:9px;color:var(--sub)}
+.g-est{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;border-left:1px solid var(--line);padding-left:10px;min-width:0}
+.g-est .cell{display:flex;flex-direction:column;gap:3px;min-width:0}
+.g-est .cell .k{font-size:9px;color:var(--sub);white-space:nowrap}
+.g-est .cell .v{font-family:var(--mono);font-size:var(--fs-card);font-weight:700;color:var(--strong);white-space:nowrap}   /* 숫자는 접지 않는다 */
+.g-est .cell .v small{font-size:9px;color:var(--sub2)}
+.g-est .note{grid-column:1/-1;font-size:9px;color:var(--sub2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.g-est .note b{font-family:var(--mono);color:var(--run);font-weight:500}
+
+/* 스테퍼 (26px · radius 7 · −/+ 24px · 값 mono 44px · 단위 9px) — 회차와 행 수량이 같은 모양 */
+#groupDlg .stepper{display:inline-flex;align-items:center;height:26px;border:1px solid var(--line2);border-radius:7px;overflow:hidden;font-size:var(--fs-xs);line-height:1;flex:none;background:transparent;width:auto}
+#groupDlg .stepper button{width:24px;height:100%;padding:0;border:0;border-radius:0;background:transparent;color:var(--sub);display:flex;align-items:center;justify-content:center;font-size:var(--fs-xs)}
+#groupDlg .stepper button:first-child{border-right:1px solid var(--line2)}
+#groupDlg .stepper button:last-child{border-left:1px solid var(--line2)}
+#groupDlg .stepper button:hover:not(:disabled){color:var(--fg);background:var(--hover)}
+#groupDlg .stepper .v{font-family:var(--mono);min-width:44px;width:44px;text-align:center;color:var(--fg);font-weight:600;border:0;background:transparent;height:100%;padding:0;font-size:var(--fs-xs);-moz-appearance:textfield}
+#groupDlg .stepper .v::-webkit-outer-spin-button,#groupDlg .stepper .v::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+#groupDlg .stepper .u{color:var(--sub2);font-size:9px;padding-right:5px}
+#groupDlg .stepper.lock{opacity:.45}
+#groupDlg .stepper button:disabled{cursor:default}
+
+/* ── 진행 막대와 회차는 한 줄 (margin 8 12 0 · 글자 10 · 막대 4px · 회차 mono 골드) ── */
+.g-prog{display:flex;align-items:center;gap:8px;margin:8px 12px 0;font-size:var(--fs-eyebrow);flex:none}
+.g-prog .lb{color:var(--sub)}
+.g-prog .bar{flex:1;height:4px;border-radius:2px;background:var(--line);position:relative;min-width:0}
+.g-prog .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:var(--run);display:block}
+.g-prog .rt{font-family:var(--mono);color:var(--gold);white-space:nowrap}
+.g-hr{height:1px;background:var(--line);margin:10px 0 0;flex:none}
+
+/* ── 「항목 n」 · ＋ 항목 담기 (9 12 7 · 12px 굵게 · 단추 26px radius 7 골드 50%) ── */
+.g-items{display:flex;align-items:center;gap:8px;padding:9px 12px 7px;flex:none}
+.g-items .t{font-size:var(--fs-sm);font-weight:700;color:var(--fg2);white-space:nowrap}
+.g-items .t .n{font-family:var(--mono);color:var(--sub);font-weight:400}
+#groupDlg #gAdd{height:26px;padding:0 10px;border-radius:7px;border:1px solid color-mix(in srgb,var(--gold) 50%,transparent);color:var(--gold);font-size:var(--fs-eyebrow);font-weight:600;background:transparent;white-space:nowrap}
+#groupDlg #gAdd:hover:not(:disabled){background:var(--goldwash)}
+#groupDlg #gAdd:disabled{opacity:.45;cursor:default}
+
+/* ── 네 탭: 대기 · 작업 중 · 완료 · 실패 (4등분 · 28px · radius 8 · 점 5px · 켜진 탭 아랫변 2px 열 색) ── */
+.g-tabs{display:grid;grid-template-columns:repeat(4,1fr);margin:0 12px 8px;border:1px solid var(--line2);border-radius:8px;overflow:hidden;font-size:var(--fs-eyebrow);line-height:1;flex:none}
+.g-tabs button{display:flex;align-items:center;justify-content:center;gap:4px;height:28px;padding:0;border:0;border-radius:0;background:transparent;color:var(--sub);white-space:nowrap;font-size:var(--fs-eyebrow)}
+.g-tabs button+button{border-left:1px solid var(--line2)}
+.g-tabs button .dot{width:5px;height:5px;border-radius:50%;display:inline-block;background:var(--line3)}
+.g-tabs button .n{font-family:var(--mono)}
+.g-tabs button.on{background:var(--card2);color:var(--strong);font-weight:700}
+.g-tabs .wait .dot{background:var(--gold)}.g-tabs .wait .n{color:var(--gold)}
+.g-tabs .run .dot{background:var(--run)}.g-tabs .run .n{color:var(--run)}
+.g-tabs .done .dot{background:var(--ok)}.g-tabs .done .n{color:var(--ok)}
+.g-tabs .fail .dot{background:var(--bad)}.g-tabs .fail .n{color:var(--bad)}
+.g-tabs button .n.z{color:var(--dim)}   /* 0 은 흐리게 — 열 색보다 뒤에 두어 이긴다 */
+.g-tabs .wait.on{box-shadow:inset 0 -2px 0 var(--gold)}
+.g-tabs .run.on{box-shadow:inset 0 -2px 0 var(--run)}
+.g-tabs .done.on{box-shadow:inset 0 -2px 0 var(--ok)}
+.g-tabs .fail.on{box-shadow:inset 0 -2px 0 var(--bad)}
+.g-tabs button.over{background:var(--goldwash);outline:1px dashed var(--gold);outline-offset:-2px}
+
+/* ── 목록: 켜진 탭의 항목만 (gap 6 · 0 12 10) ── */
+.g-list{display:flex;flex-direction:column;gap:6px;padding:0 12px 10px;min-height:88px}
+.g-list.over{background:var(--goldwash);outline:1px dashed var(--gold);outline-offset:-3px}
+.g-list .mt{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;border:1px dashed var(--line2);border-radius:9px;color:var(--sub2);font-size:var(--fs-xs);min-height:70px;padding:8px;line-height:1.5}
+
+/* 항목 행 한 줄 (10px auto 1fr auto 20px · gap 7 · 8 9 · radius 9 · 작업 중 행은 파란 테두리 40%) */
+.g-row{display:grid;grid-template-columns:10px auto minmax(0,1fr) auto 20px;gap:7px;align-items:center;padding:8px 9px;border-radius:9px;background:var(--bg);border:1px solid var(--line);flex:none}
+.g-row.run{background:color-mix(in srgb,var(--run) 7%,transparent);border-color:color-mix(in srgb,var(--run) 40%,transparent)}
+.g-row[draggable="true"]{cursor:grab}
+.g-row.dragging{opacity:.4}
+.g-row .hd{color:var(--dim);font-size:var(--fs-eyebrow);line-height:1;letter-spacing:-1px}
+.g-row .kd{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:5px;font-size:var(--fs-eyebrow);font-weight:700;white-space:nowrap;background:var(--soft);color:var(--sub)}
+.g-row .kd.gather{background:var(--gatherbg);color:var(--gather)}
+.g-row .kd.craft{background:var(--runbg);color:var(--blue)}
+.g-row .kd.alter{background:var(--orangebg);color:var(--orange)}
+.g-row .kd.collect{background:var(--collectbg);color:var(--collect)}
+.g-row .tx{display:flex;flex-direction:column;gap:2px;min-width:0}
+.g-row .nm{font-size:var(--fs-sm);font-weight:700;color:var(--strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.g-row .st{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--sub2);white-space:nowrap;overflow:hidden;min-width:0}
+.g-row .st .gsub{overflow:hidden;text-overflow:ellipsis}
+.g-row .st .dot{width:5px;height:5px;border-radius:50%;display:inline-block;flex:none;background:var(--gold)}
+.g-row.run .st .dot{background:var(--run)}
+.g-row.done .st .dot{background:var(--ok)}
+.g-row.fail .st .dot{background:var(--bad)}
+/* 가공 방식 두 갈래 (걸기만 / 수령까지) — 상태 줄 끝에 작게. 담기 서랍의 .dwmode 와 같은 모양 */
+.g-row .gmode{display:inline-flex;flex:none;background:var(--bg);border:1px solid var(--line2);border-radius:5px;overflow:hidden;margin-left:2px}
+.g-row .gmode button{min-width:0;height:auto;padding:1px 5px;border:0;border-radius:0;font-size:9px;line-height:1.4;color:var(--sub);white-space:nowrap;background:transparent}
+.g-row .gmode button.on{background:var(--orangebg);color:var(--orange);font-weight:600}
+.g-row .gmode button:hover:not(.on):not(:disabled){background:var(--hover);color:var(--fg2)}
+.g-row .gmode button:disabled{opacity:.45;cursor:default}
+/* ✕ 하나 = 빼기 (그룹 밖 대기 열로 · 지우지 않는다) */
+.g-row .x{width:20px;height:20px;padding:0;border:0;border-radius:10px;background:transparent;color:var(--sub2);font-size:var(--fs-xs);text-align:center;cursor:pointer}
+.g-row .x:hover:not(:disabled){color:var(--bad);background:var(--badbg2)}
+.g-row .x:disabled{opacity:.35;cursor:default}
+
+/* ── 켬/끔 (오류 시 · 실패 재시도 · 가공 대기) — 목록 아래 ── */
+.g-opts{padding:4px 12px 12px;display:flex;flex-direction:column}
+.g-opt{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.g-opt .tx{display:flex;flex-direction:column;gap:2px;min-width:0}
+.g-opt .tx b{font-size:var(--fs-body);font-weight:400;color:var(--fg)}
+.g-opt .tx i{font-style:normal;font-size:var(--fs-xs);color:var(--sub)}
+.g-opt .sw{width:36px;height:20px;border-radius:10px;background:var(--soft);border:1px solid var(--line2);position:relative;padding:0;flex:none;cursor:pointer}
+.g-opt .sw::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--sub);transition:left .12s,background .12s}
+.g-opt .sw.on{background:var(--gold);border-color:var(--gold)}
+.g-opt .sw.on::after{left:18px;background:var(--ongold)}
+.g-opt .sw:disabled{opacity:.45;cursor:default}
+
+/* ── 발 (9 12 · 윗선 · 단추 32px radius 8 · 저장 골드) ── */
+#groupDlg .dlg-f{gap:6px;padding:9px 12px;border-top:1px solid var(--line);background:var(--bg)}
+#groupDlg .dlg-f button{height:32px;padding:0 11px;border-radius:8px;font-size:var(--fs-xs);color:var(--fg2)}
+#groupDlg .dlg-f #gCancel{padding:0 12px}
+#groupDlg .dlg-f .pri{padding:0 15px;color:var(--ongold);font-weight:700}
+
+/* ── 좁은 폭: 위 **28px** 를 남긴 바텀 시트 (left/right 6 · bottom 6 · radius 16 · 그림자 0 −10 34) ──
+   mobile.css 의 dialog 통칙(92dvh·margin auto)은 element 선택자라 여기 id 규칙이 이긴다 (#qConfirm 과 같은 만듦새, 틈만 28). */
+@media (width < 600px){
+  #groupDlg[open]{position:fixed;inset:28px 6px 6px 6px;width:auto;max-width:none;height:auto;max-height:none;margin:0;padding:0;
+    border:1px solid var(--line2);border-radius:16px;background:var(--card);
+    box-shadow:0 -10px 34px var(--shadow);display:flex;flex-direction:column;overflow:hidden}
+  #groupDlg::backdrop{background:var(--backdrop)}
+  .g-grip{display:flex}
+  /* 켬/끔 설명은 한 문단씩이라 좁은 폭에서 화면을 통째로 먹는다 — 두 줄까지만 보인다 */
+  .g-opt{gap:10px;padding:7px 0}
+  .g-opt .tx i{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .g-opt .tx i br{display:none}
+}

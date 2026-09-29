@@ -1,0 +1,26 @@
+{
+  "name": "MobiFolio 리모컨",
+  "short_name": "MobiFolio",
+  "description": "밖에서 내 PC 의 연주를 조종합니다.",
+  "start_url": "/folio/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1018",
+  "theme_color": "#0b1018",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "/folio/icon-256.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/folio/icon-256.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

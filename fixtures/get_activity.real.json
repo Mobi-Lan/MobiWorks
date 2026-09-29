@@ -1,0 +1,22 @@
+{
+ "_note": "실제 게임의 get_activity 응답 원문 (2026-09-18). 카탈로그 예시와 달리 평면이다 — combatState/dialogue 래퍼 없음. 이때 캐릭터는 화면상 멀쩡히 서 있었는데 IsReviving=true 로 보고됐다. Performance·Interaction·Mode 는 기록에 남은 키만 적었다.",
+ "IsAutoPlaying": false,
+ "CanStartAutoPlay": true,
+ "AutoPlayTarget": "quest",
+ "IsAutoTraveling": false,
+ "AutoTravelRemainingPositionCount": 0,
+ "IsDead": false,
+ "IsReviving": true,
+ "IsInCombat": false,
+ "IsDialoguePlaying": false,
+ "IsDialogueNextAvailable": false,
+ "IsWaitingForSelection": false,
+ "Dungeon": {"State": "NotInDungeon", "IsBossBattleInProgress": false},
+ "Battlefield": {"IsInBattleField": false},
+ "IsAbyssResultSequencePlaying": false,
+ "Tutorial": {"IsPlaying": false},
+ "Scenario": {"IsInScenario": false, "IsSequencePlaying": false},
+ "Performance": {"IsPlaying": false},
+ "Interaction": {"HasTarget": false, "LastRunningInteractionType": "Altering"},
+ "Mode": {"MainButtonState": "Compass"}
+}

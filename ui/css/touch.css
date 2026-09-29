@@ -1,0 +1,122 @@
+/* touch.css — **손가락 기기에서만** (`pointer: coarse`). 마우스 PC 는 이 파일의 규칙을 한 줄도 타지 않는다.
+ *
+ * 다섯 화면(작업 `index.html` · 폴리오 `index`·`settings`·`greet`·`covers`)이 **같은 파일**을 싣는다 (폴리오는 맨 마지막,
+ * 작업 화면은 `mobile.css` 바로 앞 — mobile.css 가 마지막이어야 한다는 검사가 있고, 두 파일은 같은 자리를 다투지 않는다).
+ * 폰 규칙을 두 앱이 따로 들고 있었더니, 같은 폰에서 작업 쪽 단추는 40px · 폴리오 쪽은 28px 로 서로 달랐다.
+ * 선택자는 **맨 클래스를 쓰지 않는다**(`label.set-sw` 처럼 태그를 붙인다) — tests/test_class_names.py.
+ *
+ * **폰은 PC 와 1:1.** 글자·단추의 **보이는 크기는 PC 그대로** 두고,
+ * 손가락이 누르는 자리만 **보이지 않게** 40px 까지 넓힌다. 예외는 하나 — 입력칸 글자 16px (아래 ②).
+ *
+ * 전에는 `mobile.css` 의 `button{min-height:40px}` 가 단추 **모양**을 늘렸다 — 원형 ↻·✕ 가 30×40 타원,
+ * 머리 단추가 세로 네모, 서랍 「최대」 가 40px 줄로 서서 한 화면 16행이 10행, 스테퍼는 −/+ 40 · 값 30 으로
+ * 한 줄 높이가 갈렸다. 그 규칙을 지우고 이 파일의 ① 로 바꿨다.
+ */
+@media (pointer: coarse) {
+
+  /* ① 누르는 자리 — 보이지 않는 판(::before)을 단추 가운데에 깐다. 최소 40×40, 단추가 더 크면 단추 크기.
+     `:where()` 라 특정도가 0 이다 — 원래 `position:absolute/fixed` 인 단추는 그 값이 그대로 이긴다
+     (여기서는 **정해진 게 없을 때만** relative 를 준다). 판은 칠하지 않는다. */
+  :where(button, [role="button"], a.app, a.set-link, label.set-sw, label.dw-chain) { position: relative; }
+  :where(button, [role="button"], a.app, a.set-link, label.set-sw, label.dw-chain)::before {
+    content: ""; position: absolute; left: 50%; top: 50%;
+    width: max(100%, var(--hit-w, 40px)); height: max(100%, var(--hit-h, 40px));
+    transform: translate(-50%, -50%);
+  }
+  /* 스테퍼 −/+ 는 값 칸과 **붙어 있다** — 옆으로 넓히면 값 칸을 덮는다. 위아래로만. */
+  :where(span.stepper, div.stepper, span.set-num, span.num) > button { --hit-w: 100%; }
+  /* 가로로 굴러가는 알약 줄(overflow-x)은 위아래가 잘린다 — 줄에 위아래 여백을 주고 그만큼 당겨 자리는 그대로.
+     **바탕·테두리가 없는 줄에만** 쓴다(폴리오 #filters). 바탕이 있는 줄(#dwTgts·#sNav·#navrow)에 쓰면 그 상자가
+     14px 커져 보인다 — 실제로 그렇게 한 번 보였다. 그런 줄은 줄 높이(34~38)가 곧 눌리는 자리다. */
+  #filters { padding-block: 7px; margin-block: -7px; }
+  /* **스테퍼**(−  값  +)는 모서리를 자르려고 `overflow:hidden` 이라 안의 −/+ 판이 잘렸다 (실측 24~32 그대로).
+     스테퍼의 양 끝 단추는 바탕이 없어 자르기를 풀어도 모양이 같다 — 풀어서 위아래로 40px.
+     특정도가 있어야 각 파일의 `overflow:hidden` 을 이긴다 (여기는 :where 로 감싸지 않는다).
+     **세그먼트 묶음(칸 칩·오류 시·거르기·테마)은 풀지 않는다** — 켜진 칸의 바탕이 둥근 테두리 밖으로 네모나게
+     삐져나왔다(실측 스크린샷). 그런 묶음은 본래 높이(24~30)가 곧 눌리는 자리다. */
+  span.stepper, div.stepper, span.set-num, span.num, #boardFoot, #boardFoot .srch { overflow: visible !important; }
+
+  /* ② 입력칸 16px — 아이폰(사파리·Brave 모두 WebKit)은 16px 미만 입력칸에 손을 대면 **화면을 확대하고
+     돌아오지 않는다**. 보이는 글자가 바뀌는 유일한 예외. 칸 크기는 각 화면 규칙 그대로.
+     잇기 화면(#mwpair·#mfpair)의 코드 칸은 이미 26px 이라 뺀다 — 16 으로 **줄어들었다**(실측). */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(#mwpair input):not(#mfpair input),
+  textarea, select { font-size: 16px !important; }
+  /* 글자만 커지고 **칸 높이는 그대로** — 높이를 정하지 않은 칸은 줄 높이만큼 자라(28 → 34) 한 줄의 −/+ 와 어긋났다 */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(#mwpair input):not(#mfpair input), select { line-height: 1; }
+
+  /* ③ 손가락 기기에는 없는 것의 안내 — 키보드 단축키 · 마우스로 끌기 */
+  #kbd, .pc-hint { display: none !important; }
+
+  /* ④ 폰 390·360 에서 잰 것 (모양 변화 없음)
+     · 폴리오 설정·인사 화면의 알약 스위치(span.sw 38×22)는 ① 목록에 없어 누르는 자리가 22px 였다 — 같은 판을 깐다.
+     · 큐 카드의 회차 스테퍼는 `.bqty{overflow:hidden}` 이 −/+ 의 판을 잘라 28px 였다 — 그 상자만 자르기를 푼다
+       (안의 스테퍼는 제 테두리로 모서리를 자르고, .bqty 는 바탕이 없다). */
+  :where(span.sw) { position: relative; }
+  :where(span.sw)::before {
+    content: ""; position: absolute; left: 50%; top: 50%;
+    width: max(100%, 40px); height: max(100%, 40px); transform: translate(-50%, -50%);
+  }
+  div.bqty { overflow: visible !important; }
+  /* ⑤ 세그먼트 묶음(오류 시 계속/정지 · 칸 탭 · 서랍 종류 · 재고 거르기·정렬 · 사전 방향·출처 · 회신 기록 · 가공 밴드)은
+     둥근 모서리를 `overflow:hidden` 으로 잘라 안의 단추 판(①)이 24~30px 로 잘렸다.
+     자르기를 풀되 **켜진 칸의 바탕이 테두리 밖으로 네모나게 삐지지 않게** 양 끝 단추에만 묶음의 모서리(안쪽 = 바깥 − 1px 테두리)를
+     준다 — 잘라 그리던 것과 같은 그림이 나온다. 가로로 굴러가는 묶음(#dwTgts · .set-nav · #navrow)은 스크롤 상자라 못 푼다. */
+  :where(span.seg, div.seg, span.evseg, span.dw-seg, span.dwmode, span.stk-seg, div.dsub, div.dseg, span.dseg, div.kb-tabs, div.dsegs) { overflow: visible !important; }
+  :where(span.seg, div.seg, span.evseg, span.dw-seg) > button:first-child { border-top-left-radius: 5px; border-bottom-left-radius: 5px; }
+  :where(span.seg, div.seg, span.evseg, span.dw-seg) > button:last-child { border-top-right-radius: 5px; border-bottom-right-radius: 5px; }
+  :where(span.dwmode) > button:first-child { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+  :where(span.dwmode) > button:last-child { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+  :where(span.stk-seg, div.dseg, span.dseg) > button:first-child { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+  :where(span.stk-seg, div.dseg, span.dseg) > button:last-child { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
+  :where(div.dsub) > button:first-child { border-top-left-radius: 7px; border-bottom-left-radius: 7px; }
+  :where(div.dsub) > button:last-child { border-top-right-radius: 7px; border-bottom-right-radius: 7px; }
+  :where(div.kb-tabs) > button:first-child { border-top-left-radius: 8px; border-bottom-left-radius: 8px; }
+  :where(div.kb-tabs) > button:last-child { border-top-right-radius: 8px; border-bottom-right-radius: 8px; }
+
+  /* ⑥ 줄 높이를 바꿔야 할 것 같던 것들을 **모양 그대로** 넓혔다.
+     ㉠ 담을 곳(#dwTgts) — 굴러가는 상자를 알약이 아니라 그 겉(span.dw-tgtwrap, 마우스 PC 에서는 display:contents)으로 옮긴다.
+        겉상자에 위 1 · 아래 15px 여백 + 같은 만큼 당김(#filters 와 같은 수법)이라 줄 높이는 그대로(8+24+9 = 41)이고,
+        알약은 이제 굴러가지 않으니 자르기를 풀고(⑤ 와 같은 방식) 양 끝 단추에 알약의 안쪽 모서리를 준다.
+        **위로 1 · 아래로 15 인 까닭**: 바로 위 종류 칩 줄(26px)의 판이 아래로 7 내려온다 — 위아래 8 로 두면 그 7 을 이쪽이
+        가져가 칩이 41 → 34 로 줄었다(실측). 아래는 줄 여백 9 + 아래선 1 + 첫 행 위 여백 5 라 아무것도 안 뺏는다
+        (첫 행의 스테퍼·담기 판은 행 위에서 5 아래에서 시작하고, 자리도 오른쪽이다).
+        단추는 옆이 붙어 있어 판은 제 너비(--hit-w:100%) · 세로 40 (위 1 + 24 + 아래 15). */
+  span.dw-tgtwrap { display: inline-flex; flex: none; max-width: 60%; min-width: 0; overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: none; padding-block: 1px 15px; margin-block: -1px -15px; }
+  span.dw-tgtwrap::-webkit-scrollbar { display: none; }
+  span.dw-tgts { overflow: visible !important; max-width: none; flex: none; }
+  span.dw-tgts > button { --hit-w: 100%; }
+  span.dw-tgts > button::before { top: -1px; height: 40px; transform: translateX(-50%); }
+  span.dw-tgts > button:first-child { border-top-left-radius: 5px; border-bottom-left-radius: 5px; }
+  span.dw-tgts > button:last-child { border-top-right-radius: 5px; border-bottom-right-radius: 5px; }
+  @media (width < 600px) {
+    span.dw-tgtwrap { max-width: none; }
+    span.dw-tgts > button:first-child { border-top-left-radius: 7px; border-bottom-left-radius: 7px; }
+    span.dw-tgts > button:last-child { border-top-right-radius: 7px; border-bottom-right-radius: 7px; }
+  }
+  /* ㉡ 부족 재료 체크(14×14) — 네모가 아니라 **라벨(label.dw-chain) 전체**가 누르는 자리다 (① 목록에 넣었다: 85×15 → 85×40).
+     ㉢ 둘째 줄 꼬리(「최대」 13px · 걸기만/수령까지 12px) — 줄(span.l2)이 말줄임 때문에 overflow:hidden 이라 판이 잘렸다.
+        가로만 자르고(clip) 세로는 푼다 — 말줄임은 안의 .tx 가 제 overflow 로 한다. 판은 가운데가 아니라 **행 바닥에 맞춘다**
+        (bottom:-8px = 행 padding) — 가운데 두면 다음 행의 위 5px 를 덮는다.
+        가로는 그대로 줄 끝에서 잘린다 — 걸기만·수령까지·최대 셋이 80px 안에 붙어 있어 셋 다 40 은 못 된다
+        (실측 28·29·32, 제작 행의 「최대」는 뒤가 비어 41). overflow-clip-margin 은 한 축만 clip 이면 크로미움이 무시한다(실측). */
+  div.dw-r span.l2 { overflow: clip visible; }
+  span.l2 button::before { top: auto; bottom: -8px; transform: translateX(-50%); }
+  /* ㉣ 갈래 줄(작업 설정 .set-nav · 폴리오 설정 #navrow) — 34px 줄이 곧 스크롤 상자라 판이 34 에서 잘렸다.
+        상자 **아래**에 7px 여백을 주고 6px 당긴다(아래선 1px 을 여백으로 옮겼으니 바깥 높이는 그대로 35·36).
+        바탕은 content-box 에만 칠하고 아래선은 padding-box 바닥에서 6px 위(= 예전 그 자리)에 1px 그라데이션으로 긋는다.
+        상자 자체는 pointer-events:none — 판 밖의 6px 띠는 아래 본문에 그대로 간다. 판은 단추 위에서 40 (34 + 아래 6). */
+  div.set-nav, #navrow { pointer-events: none; border-bottom: 0; padding-bottom: 7px; margin-bottom: -6px; }
+  div.set-nav { background: linear-gradient(var(--line2), var(--line2)) left 0 bottom 6px / 100% 1px no-repeat padding-box,
+    linear-gradient(var(--panel), var(--panel)) content-box; }
+  #navrow { background: linear-gradient(var(--line3), var(--line3)) left 0 bottom 6px / 100% 1px no-repeat padding-box,
+    linear-gradient(var(--bar), var(--bar)) content-box; }
+  div.set-nav > button, #navrow > button.nav { pointer-events: auto; --hit-w: 100%; }
+  div.set-nav > button::before, #navrow > button.nav::before { top: 0; height: 40px; transform: translateX(-50%); }
+  /* ㉤ 머리 단추 — 작업 30×30 · 간격 4(좁은 폭 6), 폴리오 28×28 · 간격 7. 판을 40 으로 두면 이웃 판과 겹쳐 뒤 단추가
+        3px 씩 가져갔다(실측 l21 r14). 판 너비 = 단추 + 간격 → 겹침 0. 세로는 40 (작업 좁은 폭은 39 — 아래 페이지 탭 줄
+        #mtabs 가 z-index 20 이라 그 판이 위로 5 올라와 1px 을 가진다. 줄 간격을 지키려고 둔다). */
+  header button.tb { --hit-w: 34px; }
+  #tools > button.tb { --hit-w: 35px; }
+  @media (width < 600px) { header button.tb { --hit-w: 36px; } }
+}

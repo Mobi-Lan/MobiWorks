@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>연주 인사 · 프리셋</title>
+<!-- 공통 뼈대(머리·갈래 띠·행·스위치·발)는 folio-settings.css 에 있다 — settings.html 과 같이 쓴다.
+     아래 `<style>` 에는 이 화면에만 있는 것(순서 띠 · 프리셋 목록 · 미리보기)만 남긴다. -->
+<link rel="stylesheet" href="/css/folio-settings.css">
+<style>
+/* 연주 인사 — **인사말 전용 설정 페이지** (일반 설정과 따로 둔다).
+   예전에는 카드 덩어리 셋이었다 — 모양이 설정 화면과 전혀 달랐다.
+   이제 settings.html 과 **같은 뼈대**다: 머리 → 갈래 띠(인사 · 이 곡 · 프리셋) → 행 → 발(되돌리기 · 저장).
+   들어오는 길은 화면 전환이다: `/folio/greet.html` (미니 화면의 인사 단추),
+   `/folio/greet.html?song=<key>&title=<t>` (곡 메뉴의 「인사 프리셋…」 → 「이 곡」 갈래가 열린다). */
+
+/* 순서 띠 — 재생을 누른 뒤 무엇이 언제 나가는지. 설정 행이 아니라 **정보 표시**라
+   행 사이에 .r.col 로 둔다. 칸 색은 종류별 클래스로 준다 (코드 안에 색을 적지 않는다). */
+#tl{display:flex;border:1px solid var(--ctl);border-radius:8px;overflow:hidden;font-size:11px;line-height:1.3;width:100%}
+#tl div{display:flex;flex-direction:column;gap:3px;padding:8px 9px;border-right:1px solid var(--line3);min-width:0}
+#tl div:last-child{border-right:0}
+#tl em{font-style:normal;font-size:10px;color:var(--row-sub)}
+#tl b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--row)}
+#tl div.g{background:var(--gold-fill)}          /* 인사말 · 행동 · 표정 */
+#tl div.g b{color:var(--gold)}
+#tl div.o{background:var(--runbg)}              /* 시작 연출 (파랑 — 작업 색표의 실행 색) */
+#tl div.o b{color:var(--blue)}
+#tl div.p{background:var(--strip)}              /* 연주 시작 */
+.btn:disabled,.tok:disabled{opacity:.45;cursor:default}
+select:disabled,input:disabled,textarea:disabled{opacity:.6}
+
+/* 프리셋 — 종류 띠(시작 · 끝 · 들었을 때). 갈래 띠와 같은 밑줄 탭이되 한 행 안에 든다. */
+#ptabs{display:flex;border-bottom:1px solid var(--ctl);font-size:12px;line-height:1}
+.ptab{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;height:32px;
+  border-bottom:2px solid transparent;color:var(--row-sub)}
+.ptab.on{color:var(--gold);font-weight:700;border-bottom-color:var(--gold)}
+.ptab .n{font-size:10px;color:var(--faint)}
+/* 켜 놓고도 쓸 프리셋이 없으면 한 줄도 안 나간다 — 그 사실을 금색 띠로 알린다 */
+#pWarn{margin:9px 14px 0;padding:9px 12px;border-radius:8px;font-size:11px;line-height:1.5;color:var(--on-gold);
+  background:var(--gold);word-break:keep-all}
+#pWarn[hidden]{display:none!important}
+/* 목록 — 한 줄에 한 벌. 「이 곡」 갈래의 고르기 목록도 같은 모양이다. */
+.plist{display:flex;flex-direction:column;border:1px solid var(--ctl);border-radius:8px;overflow:auto;max-height:170px;width:100%}
+.plist .p{display:flex;align-items:center;gap:7px;min-height:34px;padding:0 11px;font-size:12px;cursor:pointer;
+  border-bottom:1px solid var(--rowline);color:var(--row);text-align:left;width:100%}
+.plist .p:last-child{border-bottom:0}
+.plist .p.on{background:var(--gold-fill);color:var(--gold);font-weight:600}
+.plist .p .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plist .p .star{font-size:10px;color:var(--gold)}
+.plist .empty{padding:11px;font-size:11px;color:var(--faint2);line-height:1.5}
+#pTokens{display:flex;gap:5px;flex-wrap:wrap}
+/* 행동·표정 고르기 — 앱 안의 목록판 (잘 보이게).
+   예전에는 브라우저 기본 목록(datalist)이었다: 어둡고 흐린 기본 팝업에 「/손인사1 / 손인사1」·「/ㅇㅅ / 손인사1」 처럼
+   **별칭마다 한 줄**이 따로 나와 같은 행동이 여러 번 보였다. 이제는
+     · 행동 = 한 행에 한 행동 — 굵은 이름 + 그 행동의 채팅 명령을 작은 조각으로 (조각을 누르면 그 명령, 행을 누르면 첫 명령)
+     · 표정 = 타일 격자 — 큰 그림글자 + 아래 이름
+   설정 뼈대(folio-settings.css 의 행·글 칸·금색 선택)와 같은 재료로 짓는다.
+   판은 필드 **바로 아래 흐름 안**에 연다 (겹쳐 띄우면 375 폭에서 #body 스크롤에 잘린다). 안에서 스크롤, 최대 50vh. */
+.pick{position:relative;display:flex;gap:6px;align-items:stretch}
+.pick > input{flex:1;min-width:0}
+.pk-open{flex-shrink:0;width:36px;border-radius:8px;border:1px solid var(--ctl);background:var(--inset);
+  color:var(--ctl-ink);font-size:15px;line-height:1}
+.pk-open:hover,.pk-open[aria-expanded="true"]{border-color:var(--gold-line);color:var(--gold)}
+.pk-open:disabled{opacity:.45;cursor:default;border-color:var(--ctl);color:var(--ctl-ink)}
+.pk-panel{margin-top:6px;border:1px solid var(--gold-line);border-radius:10px;background:var(--bar);
+  box-shadow:0 8px 24px var(--shadow);display:flex;flex-direction:column;max-height:50vh;overflow:hidden}
+.pk-panel[hidden]{display:none!important}
+.pk-head{flex-shrink:0;padding:8px;border-bottom:1px solid var(--line3)}
+.r .pk-head input[type=search]{width:100%;padding:7px 10px;border-radius:7px;background:var(--inset);
+  border:1px solid var(--ctl);color:var(--ink);outline:none;font-size:12px}
+.r .pk-head input[type=search]:focus{border-color:var(--gold-line)}
+.pk-list{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
+.pk-msg{padding:14px 12px;font-size:12px;line-height:1.55;color:var(--row-sub);word-break:keep-all}
+.pk-msg b{color:var(--ink);font-weight:600}
+/* 행동 한 행 — 이름(굵게) 위, 명령 조각 아래 */
+.pk-row{display:flex;flex-direction:column;gap:5px;padding:9px 12px;border-bottom:1px solid var(--rowline);cursor:pointer}
+.pk-row:last-child{border-bottom:0}
+.pk-row .nm{font-size:13px;font-weight:700;color:var(--ink);line-height:1.3}
+.pk-cmds{display:flex;flex-wrap:wrap;gap:5px}
+.pk-chip{height:22px;padding:0 9px;border-radius:11px;border:1px solid var(--ctl);background:var(--inset);
+  color:var(--chip);font-family:Consolas,"D2Coding","Malgun Gothic",monospace;font-size:11px;line-height:20px;cursor:pointer}
+.pk-chip:hover{border-color:var(--gold-line);color:var(--gold)}
+/* 표정 타일 */
+.pk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;padding:8px}
+.pk-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:70px;
+  padding:8px 4px;border:1px solid var(--ctl);border-radius:9px;background:var(--inset);cursor:pointer;text-align:center}
+.pk-tile .em{font-size:26px;line-height:1.1;color:var(--ink);
+  font-family:"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji","Malgun Gothic",sans-serif;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pk-tile .nm{font-size:11.5px;color:var(--ink);line-height:1.25;word-break:keep-all;max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pk-tile:hover{border-color:var(--gold-line)}
+/* 지금 칸에 든 값 = 금색 · 키보드로 옮겨 다니는 칸 = 금 테두리 */
+.pk-row:hover{background:var(--gold-wash)}
+.pk-row.on{background:var(--gold-fill)}
+.pk-row.on .nm{color:var(--gold)}
+.pk-chip.on{background:var(--gold);border-color:var(--gold);color:var(--on-gold);font-weight:700}
+.pk-tile.on{background:var(--gold-fill);border-color:var(--gold)}
+.pk-tile.on .nm{color:var(--gold);font-weight:700}
+.pk-row.act{box-shadow:inset 3px 0 0 var(--gold)}
+.pk-tile.act{outline:2px solid var(--gold);outline-offset:-2px}
+#pPrev{width:100%;padding:8px 11px;border-radius:8px;background:var(--bar);border:1px solid var(--ctl);
+  font-size:12px;color:var(--title);line-height:1.5;word-break:keep-all;min-height:18px}
+#pSteps{display:flex;gap:8px;font-size:11px;color:var(--row-sub);min-height:14px}
+#pCount{color:var(--ok)}
+#pCount.over{color:var(--pink)}
+</style>
+<!-- 색은 **작업 쪽 색표 하나**를 쓴다. 차례가 규칙이다 —
+     위의 `<style>` 다음에 와야 겹치는 이름을 덮는다. -->
+<link rel="stylesheet" href="/css/tokens.css">
+<link rel="stylesheet" href="/css/folio-bridge.css">
+<link rel="stylesheet" href="/css/shell.css">
+<!-- 손가락 기기 규칙 — 작업 화면과 **같은 파일** (css/touch.css) · 맨 마지막 -->
+<link rel="stylesheet" href="/css/touch.css">
+<!-- 테마 (설정 ui_theme — 두 앱 공통). 이 PC 는 서버가 <html data-theme> 을 박아 내고, 폰은 이 파일이 머리에서 입힌다 -->
+<script src="/js/theme.js"></script>
+</head>
+<body>
+<div id="hd">
+  <button id="back">← 돌아가기</button>
+  <b>연주 인사</b><span id="ver" class="mono"></span>
+</div>
+<div id="navrow">
+  <button class="nav on" data-s="s-greet">인사</button>
+  <button class="nav" data-s="s-song">이 곡</button>
+  <button class="nav" data-s="s-preset">프리셋</button>
+</div>
+
+<div id="body">
+  <!-- 갈래 1 · 인사 — 켜기 · 순서 · 값들. 저장은 발의 「저장」으로 (설정과 같다). -->
+  <section id="s-greet">
+    <h2>인사</h2>
+    <div class="r hi"><span class="lb"><b>인사 기능 켜기</b><i>켜야 게임에 실제로 나갑니다 · 기본은 꺼짐 · 채팅 · 행동 · 표정을 곡 앞뒤에 내보냅니다</i></span>
+      <span class="sw" data-k="greet_on"><i></i></span></div>
+    <div class="r col"><span class="lb"><b id="tlttl">재생을 누른 뒤 순서</b><i>시작 연출(6.0초)은 연주 시작에 딱 맞춰 끝나도록 자동 배치됩니다</i></span>
+      <div id="tl"></div></div>
+    <div class="r"><span class="lb"><b>대기 시간</b><i>재생을 누르고 실제 연주까지 · 0이면 인사 없이 즉시</i></span>
+      <span class="num" data-k="greet_lead" data-step="0.5" data-min="0" data-max="60" data-unit="초"><button data-d="-1">−</button><span></span><button data-d="1">+</button></span></div>
+    <div class="r"><span class="lb"><b>단계 간격</b><i>인사말 → 행동 → 표정</i></span>
+      <span class="num" data-k="greet_step" data-step="0.5" data-min="0.5" data-max="10" data-unit="초"><button data-d="-1">−</button><span></span><button data-d="1">+</button></span></div>
+    <div class="r"><span class="lb"><b>끝 인사 시점</b><i>곡이 끝나기 전으로 당기거나, <b>끝난 뒤로 미룰</b> 수도 있습니다</i></span>
+      <select class="sel" id="endLead">
+        <option value="30">끝나기 30초 전</option><option value="15">끝나기 15초 전</option>
+        <option value="10">끝나기 10초 전</option><option value="5">끝나기 5초 전</option>
+        <option value="3">끝나기 3초 전</option>
+        <option value="0">끝난 직후</option>
+        <option value="-3">끝난 3초 뒤</option><option value="-5">끝난 5초 뒤</option>
+        <option value="-10">끝난 10초 뒤</option><option value="-20">끝난 20초 뒤</option>
+        <option value="-30">끝난 30초 뒤</option>
+      </select></div>
+    <div class="r"><span class="lb"><b>다른 사람의 연주가 끝나면 인사하기</b><i>「잘 들었습니다」를 자동으로</i></span>
+      <span class="sw" data-k="greet_listen"><i></i></span></div>
+    <div class="r"><span class="lb"><b>자동 인사 최소 간격</b><i>도배 방지 · 같은 연주는 한 번만</i></span>
+      <span class="num" data-k="greet_listen_gap" data-step="5" data-min="5" data-max="600" data-unit="초"><button data-d="-1">−</button><span></span><button data-d="1">+</button></span></div>
+    <div class="note">채팅 한 통로로 나가며 50자를 넘으면 잘립니다. 인사말은 「프리셋」 갈래에서 만듭니다.</div>
+  </section>
+
+  <!-- 갈래 2 · 이 곡 — 곡 메뉴의 「인사 프리셋…」으로 `?song=<key>` 를 달고 넘어왔을 때만 보인다.
+       고르는 것은 **시작 인사뿐**이다. 끝·들었을 때는 상황에 걸린 것이지 곡에 걸린 것이 아니라 곡별로 나누지 않는다.
+       고르면 바로 저장된다 (한 번 누르는 것이 곧 선택이라 발의 「저장」을 거치지 않는다). -->
+  <section id="s-song" hidden>
+    <h2>이 곡</h2>
+    <div class="note" id="songName"></div>
+    <div class="r col"><span class="lb"><b>이 곡에 쓸 시작 인사</b><i>누르면 바로 지정됩니다 · 「지정 안 함」이면 기본 프리셋으로 나갑니다</i></span>
+      <div id="songList" class="plist"></div></div>
+  </section>
+
+  <!-- 갈래 3 · 프리셋 — 시작·끝·들었을 때 목록과 한 벌 편집.
+       **여기는 즉시 저장이다** (아래 스크립트의 pSave 주석 참고). 발의 「저장」은 인사 갈래의 값만 보낸다. -->
+  <section id="s-preset">
+    <h2>프리셋</h2>
+    <div id="ptabs">
+      <button class="ptab on" data-k="start">시작 <span class="n mono" data-c="start">0</span></button>
+      <button class="ptab" data-k="end">끝 <span class="n mono" data-c="end">0</span></button>
+      <button class="ptab" data-k="listen">들었을 때 <span class="n mono" data-c="listen">0</span></button>
+    </div>
+    <div id="pWarn" hidden>이 종류에서 <b>쓸 프리셋이 정해져 있지 않습니다</b> — 목록에서 하나를 고르고 「기본으로」를 누르세요.</div>
+    <div class="r col"><span class="lb"><b>목록</b><i>한 줄을 누르면 아래에서 고칩니다 · 두 번 누르면 이 종류의 기본이 됩니다</i></span>
+      <div id="plist" class="plist"></div>
+      <div class="btns"><button class="btn" id="pAdd">+ 추가</button><button class="btn" id="pDup">복제</button>
+        <button class="btn" id="pDel">삭제</button><button class="btn" id="pStar">기본으로</button></div></div>
+    <div class="r"><span class="lb"><b>무작위로 돌리기</b><i>기본 하나 대신 이 종류의 프리셋을 번갈아 씁니다</i></span>
+      <span class="sw" id="pRandSw"><i></i></span></div>
+    <div class="r col"><span class="lb"><b>인사말</b><i>*(곡)* 처럼 적으면 그 자리에 곡 이름이 들어갑니다 — 아래 조각을 누르면 끼워집니다</i></span>
+      <textarea id="pChat" placeholder="♪ *(곡)* (*(길이)*) 시작합니다 · 합주 환영"></textarea>
+      <div id="pTokens"></div></div>
+    <div class="r col"><span class="lb"><b>행동</b><i>게임의 행동 명령 (예: /손인사1) · 비우면 건너뜁니다</i></span>
+      <div class="pick"><input type="text" id="pAct" placeholder="/손인사1" autocomplete="off" role="combobox"
+          aria-expanded="false" aria-controls="pkActPanel"><button type="button" class="pk-open" id="pkActBtn"
+          aria-label="행동 목록 열기" aria-expanded="false">▾</button></div>
+      <div class="pk-panel" id="pkActPanel" data-kind="act" hidden>
+        <div class="pk-head"><input type="search" id="pkActQ" placeholder="찾기 — 이름이나 명령 (예: 인사, ㅇㅅ)" autocomplete="off"></div>
+        <div class="pk-list" id="pkActList" role="listbox" aria-label="행동"></div></div></div>
+    <div class="r col"><span class="lb"><b>표정</b><i>게임의 표정 글자 (예: ^^) · 비우면 건너뜁니다</i></span>
+      <div class="pick"><input type="text" id="pEmo" placeholder="^^" autocomplete="off" role="combobox"
+          aria-expanded="false" aria-controls="pkEmoPanel"><button type="button" class="pk-open" id="pkEmoBtn"
+          aria-label="표정 목록 열기" aria-expanded="false">▾</button></div>
+      <div class="pk-panel" id="pkEmoPanel" data-kind="emo" hidden>
+        <div class="pk-head"><input type="search" id="pkEmoQ" placeholder="찾기 — 표정 이름" autocomplete="off"></div>
+        <div class="pk-list" id="pkEmoList" role="listbox" aria-label="표정"></div></div></div>
+    <div class="r col"><span class="lb"><b>미리보기</b><i>지금 곡으로 채워 본 것 · <span id="pCount" class="mono">0 / 50</span></i></span>
+      <div id="pPrev">—</div>
+      <div id="pSteps"></div></div>
+    <div class="r" id="pSendRow"><span class="lb"><b>지금 보내 보기</b><i>게임에 실제로 보냅니다 — 주변 사람에게 그대로 보입니다</i></span>
+      <button class="btn gold" id="pSend">보내기</button></div>
+  </section>
+</div>
+
+<div id="ft"><span id="msg"></span><button class="btn" id="cancel">되돌리기</button><button class="btn pri" id="save">저장</button></div>
+<div id="toast"></div>
+
+<script src="/folio/net.js"></script>
+<script>
+const TOKEN=MF.TOKEN,REMOTE=MF.REMOTE,CAN=MF.CAN,api=MF.api;   // 전송층은 net.js 가 쥔다 (PC 안·밖 겸용)
+const $=(id)=>document.getElementById(id);
+const esc=(s)=>String(s??"").replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));   // ' 도 — 따옴표 종류를 가리지 않게 (보안)
+// 「지금 보내 보기」는 이 PC 에서만 — 게임 채팅으로 나가 남에게 보인다 (서버 `greet/test` 도 밖에서는 403).
+// 눌러 봐야 안 되는 단추를 보여 주지 않는다 (감춘다 — 지우면 아래 처리기가 없는 칸을 찾아 터진다).
+if(!CAN.greetTest)$("pSendRow").hidden=true;
+let toastT=0;
+function toast(m,kind){const t=$("toast");t.textContent=m;t.className=(kind||"")+" show";
+  clearTimeout(toastT);toastT=setTimeout(()=>{t.className="";},3200);}
+function say(m,kind){$("msg").textContent=m||"";$("msg").className=kind||"";}
+
+/* 이 창이 살아 있다고 서버에 계속 알린다 — 미니판은 창이 닫히면 스스로 꺼지므로,
+   인사 페이지로 옮겨 온 동안에도 이 연결이 끊기면 안 된다 (settings.html 과 같은 구조). */
+(async function hold(){if(!CAN.hold)return;   // 밖에서는 창 살아있음 신호를 보내지 않는다
+  for(;;){try{
+  const r=await fetch("/api/hold",{headers:{"X-Requested-With":"mobiworks","X-MobiWorks-Token":TOKEN},cache:"no-store"});
+  const rd=r.body.getReader();while(!(await rd.read()).done){}
+}catch{}await new Promise((res)=>setTimeout(res,1000));}})();
+
+const back=()=>{location.href="/folio/";};
+$("back").onclick=back;
+document.addEventListener("keydown",(e)=>{
+  if(e.key==="Escape"){e.preventDefault();back();}
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="s"){e.preventDefault();$("save").click();}});
+
+/* ── 갈래 = 탭 (설정과 같다) ── 한 번에 한 갈래만 보인다. 보던 갈래는 기억한다. */
+function showSec(id){
+  const secs=[...document.querySelectorAll("#body section")];
+  const pick=secs.find((x)=>x.id===id&&!x.dataset.off)||secs.find((x)=>!x.dataset.off);
+  if(!pick)return;
+  for(const x of secs)x.hidden=(x!==pick);
+  for(const x of document.querySelectorAll(".nav"))x.classList.toggle("on",x.dataset.s===pick.id);
+  $("body").scrollTop=0;                            // 갈래를 바꾸면 위에서부터 본다
+  try{sessionStorage.setItem("mf.greet.tab",pick.id);}catch(e){}   // 저장하고 돌아와도 보던 갈래로
+}
+for(const b of document.querySelectorAll(".nav"))b.onclick=()=>showSec(b.dataset.s);
+
+/* ── 인사 갈래의 값 — 설정과 같은 방식: 손대면 dirty, 발의 「되돌리기」/「저장」 ── */
+const OPENING_SEC=6.0;
+const NUMS=[...document.querySelectorAll(".num")];
+const SWS=[...document.querySelectorAll(".sw[data-k]")];
+let SET={},cur={},isDirty=false;
+const fmtNum=(v,step)=>(step<1?Number(v).toFixed(1):String(Math.round(v)));
+function paintNum(el){const k=el.dataset.k;el.querySelector("span").textContent=
+  fmtNum(cur[k]??0,Number(el.dataset.step))+(el.dataset.unit||"");}
+function paintSw(el){el.classList.toggle("on",!!cur[el.dataset.k]);}
+function paint(){
+  for(const el of NUMS)paintNum(el);
+  for(const el of SWS)paintSw(el);
+  $("endLead").value=String(Math.round(Number(cur.greet_end_lead)||0));
+  if(!$("endLead").value||!$("endLead").selectedOptions.length)$("endLead").value="0";
+  paintTl();}
+/* 재생을 누른 뒤 무엇이 언제 나가는지 (순서 띠). 시작 연출은 **연주 시작에 딱 맞춰 끝나도록**
+   거꾸로 놓이므로, 표정과 같은 때가 되면 한 칸으로 합친다.
+   글자는 DOM 으로 넣는다 — innerHTML 에 값을 섞지 않는다. 색은 클래스(g·o·p)로 CSS 가 준다. */
+function paintTl(){
+  const lead=Number(cur.greet_lead)||0,step=Math.max(0.5,Number(cur.greet_step)||1);
+  $("tlttl").textContent=lead>0?`재생을 누른 뒤 순서 · 총 ${lead.toFixed(1)}초`
+                               :"대기 0초 — 인사 없이 바로 연주합니다";
+  const cells=[];
+  const add=(t,label,cls)=>{const p=cells.find((c)=>Math.abs(c.t-t)<0.05);
+    if(p)p.label+=" · "+label;else cells.push({t,label,cls});};
+  if(lead>0){
+    add(0,"인사말","g");
+    if(step<lead)add(step,"행동","g");
+    if(step*2<lead)add(step*2,"표정","g");
+    const opAt=Math.max(0,lead-OPENING_SEC);
+    if(opAt<lead)add(opAt,"연출 시작","o");
+    cells.sort((a,b)=>a.t-b.t);
+  }
+  cells.push({t:lead,label:"연주 시작",cls:"p"});
+  // 칸 폭은 시간 간격을 따르되 **1~1.6 사이로 묶는다** — 안 묶으면 긴 칸 하나가 띠를 다 먹고
+  // 마지막 「연주 시작」이 잘린다.
+  const host=$("tl");host.textContent="";
+  cells.forEach((c,i)=>{
+    const next=i+1<cells.length?cells[i+1].t:c.t+1;
+    const d=document.createElement("div");
+    d.className=c.cls;d.style.flex=String(Math.min(1.6,Math.max(1,(next-c.t)||1)));
+    const em=document.createElement("em");em.className="mono";em.textContent=c.t.toFixed(1)+"s";
+    const b=document.createElement("b");b.textContent=c.label;
+    d.appendChild(em);d.appendChild(b);host.appendChild(d);});}
+function dirty(){isDirty=true;say("저장하지 않은 변경이 있습니다");}
+for(const el of NUMS)for(const b of el.querySelectorAll("button"))b.onclick=()=>{
+  const k=el.dataset.k,d=Number(el.dataset.step)*Number(b.dataset.d);
+  const lo=Number(el.dataset.min),hi=Number(el.dataset.max);
+  cur[k]=Math.min(hi,Math.max(lo,Math.round(((Number(cur[k])||0)+d)*100)/100));
+  paintNum(el);paintTl();dirty();};
+for(const el of SWS)el.onclick=()=>{cur[el.dataset.k]=!cur[el.dataset.k];paintSw(el);dirty();};
+$("endLead").onchange=()=>{cur.greet_end_lead=Number($("endLead").value)||0;dirty();};
+const SAVE_KEYS=["greet_on","greet_lead","greet_step","greet_end_lead","greet_listen","greet_listen_gap"];
+$("save").onclick=async()=>{
+  if(!loaded)return;   // 못 불러온 채로는 저장하지 않는다
+  const body={};for(const k of SAVE_KEYS)body[k]=cur[k];
+  $("save").disabled=true;
+  try{const r=await api("/api/settings",{settings:body});
+    if(!r||r.ok===false){say("저장하지 못했습니다: "+((r&&(r.message||r.error))||""),"bad");return;}
+    SET=r.settings||Object.assign({},SET,body);cur=Object.assign({},SET);isDirty=false;paint();
+    say(cur.greet_on?"저장했습니다 — 인사가 켜져 있습니다":"저장했습니다 (인사는 꺼져 있습니다)","ok");
+    pRender(true);                                  // 켜기가 바뀌면 프리셋 경고띠도 따라 바뀐다
+  }finally{$("save").disabled=false;}};
+$("cancel").onclick=()=>{cur=Object.assign({},SET||{});isDirty=false;paint();say("되돌렸습니다");pRender(true);};
+
+/* ── 프리셋 갈래 ──
+   **여기는 즉시 저장이다** (발의 「저장」을 거치지 않는다). 까닭:
+     · 목록은 추가·복제·삭제·기본 지정이 한 벌씩 서버에 가는 **낱개 편집**이다. 인사 갈래의 값 여섯처럼
+       한 덩어리로 「되돌리기」할 단위가 아니다.
+     · 「지금 보내 보기」는 서버가 **저장된** 프리셋(id)을 읽어 보낸다 — 안 보낸 편집은 시험할 수 없다.
+     · 「이 곡」 갈래와 미니 화면이 같은 목록을 바로 본다.
+   그래서 프리셋 편집은 인사 갈래의 dirty 표시를 건드리지 않는다. */
+const TOKENS=["*(곡)*","*(아티스트)*","*(길이)*","*(다음곡)*","*(인원)*"];
+let P={items:[],pick:{start:"",end:"",listen:""},by_song:{}},pKind="start",pId="";
+let pSample={song:"첫사랑",artist:"",duration:169,next:"",mates:0};
+const pOf=(id)=>P.items.find((x)=>x.id===id)||null;
+const pList=()=>P.items.filter((x)=>x.kind===pKind);
+function pRender(keepFields){
+  for(const b of document.querySelectorAll(".ptab"))b.classList.toggle("on",b.dataset.k===pKind);
+  for(const n of document.querySelectorAll("[data-c]"))n.textContent=P.items.filter((x)=>x.kind===n.dataset.c).length;
+  const list=pList();
+  if(!list.some((x)=>x.id===pId))pId=list.length?list[0].id:"";
+  $("plist").innerHTML=list.length?list.map((x)=>
+    `<button class="p${x.id===pId?" on":""}" data-id="${esc(x.id)}"><span class="nm">${esc(x.name)}</span>`
+    +`${P.pick[pKind]===x.id?`<span class="star">기본</span>`:""}</button>`).join("")
+    :`<div class="empty">아직 만든 프리셋이 없습니다 — 「+ 추가」로 한 벌 만드세요.</div>`;
+  for(const b of $("plist").querySelectorAll(".p")){
+    b.onclick=()=>{pId=b.dataset.id;pRender();};
+    b.ondblclick=()=>{P.pick[pKind]=b.dataset.id;pSave();};   // 두 번 누르면 이 종류의 기본
+  }
+  $("pRandSw").classList.toggle("on",P.pick[pKind]==="*");
+  const it=pOf(pId)||{name:"",chat:"",action:"",emoji:""};
+  if(!keepFields){$("pChat").value=it.chat||"";$("pAct").value=it.action||"";$("pEmo").value=it.emoji||"";}
+  for(const id of ["pChat","pAct","pEmo","pDup","pDel","pStar","pSend"])$(id).disabled=!pId;
+  $("pStar").classList.toggle("gold",!!pId&&P.pick[pKind]===pId);
+  $("pStar").textContent=(pId&&P.pick[pKind]===pId)?"기본임":"기본으로";
+  // 켜 놓고도 쓸 프리셋이 없으면 한 줄도 안 나간다 — 그 사실을 화면에 알린다.
+  // 한 벌도 없을 때와, 있는데 안 고른 때는 할 말이 다르다.
+  const empty=!pList().length;
+  const need=cur.greet_on&&(empty||!P.pick[pKind]);
+  $("pWarn").innerHTML=empty
+    ? "이 종류에 <b>프리셋이 하나도 없습니다</b> — 「+ 추가」로 만들어 주세요. 없으면 한 줄도 안 나갑니다."
+    : "이 종류에서 <b>쓸 프리셋이 정해져 있지 않습니다</b> — 목록에서 하나를 고르고 「기본으로」를 누르세요.";
+  $("pWarn").hidden=!need;
+  pPreview();}
+function pRenderText(t){       // 서버의 greet_render 와 같은 규칙 (미리보기용)
+  const m=pSample,mm=(s)=>Math.floor(s/60)+":"+String(Math.floor(s%60)).padStart(2,"0");
+  return String(t||"").replace(/\*\(([^)]+)\)\*/g,(all,k)=>{
+    k=k.trim();
+    if(["곡","노래제목","제목","song","title"].includes(k))return m.song||"";
+    if(["아티스트","artist"].includes(k))return m.artist||"";
+    if(["길이","재생시간","시간","duration"].includes(k))return m.duration?mm(m.duration):"";
+    if(["다음곡","다음","next"].includes(k))return m.next||"";
+    if(["인원","합주","people"].includes(k))return String(m.mates||0);
+    return all;}).trim();}
+function pPreview(){
+  const txt=pRenderText($("pChat").value);
+  $("pPrev").textContent=txt||"—";
+  const n=[...txt].length;
+  $("pCount").textContent=n+" / 50";$("pCount").classList.toggle("over",n>50);
+  const steps=[];
+  if($("pAct").value)steps.push("→ "+$("pAct").value);
+  if($("pEmo").value)steps.push("→ "+$("pEmo").value);
+  $("pSteps").textContent=steps.join("  ");}
+function pTouch(){const it=pOf(pId);if(!it)return;
+  it.chat=$("pChat").value;it.action=$("pAct").value.trim();it.emoji=$("pEmo").value.trim();
+  pPreview();pSave();}
+let pSaveT=0;
+function pSave(){clearTimeout(pSaveT);pSaveT=setTimeout(async()=>{
+  const r=await api("/api/presets",{items:P.items,pick:P.pick});
+  if(!r||r.ok===false){say("프리셋을 저장하지 못했습니다: "+((r&&(r.message||r.error))||""),"bad");return;}
+  P={items:r.items||[],pick:r.pick||P.pick,by_song:r.by_song||{}};
+  // 인사 갈래에 안 보낸 변경이 있으면 그 말을 지우지 않는다 — 발의 「저장」이 아직 남아 있다.
+  if(isDirty)toast("프리셋을 저장했습니다","ok");else say("프리셋을 저장했습니다","ok");
+  pRender(true);},450);}
+for(const b of document.querySelectorAll(".ptab"))b.onclick=()=>{pKind=b.dataset.k;pRender();};
+for(const id of ["pChat","pAct","pEmo"])$(id).oninput=pTouch;
+$("pStar").onclick=()=>{if(!pId)return;P.pick[pKind]=pId;pRender(true);pSave();};
+$("pRandSw").onclick=()=>{P.pick[pKind]=P.pick[pKind]==="*"?"":"*";pRender();pSave();};
+$("pAdd").onclick=async()=>{
+  const name=await MF.ask({title:"프리셋 이름",input:"새 프리셋",placeholder:"예: 합주 인사",ok:"만들기"});
+  if(name===null)return;
+  const it={id:"n"+Date.now().toString(36),kind:pKind,name:(name||"새 프리셋").trim(),chat:"",action:"",emoji:""};
+  P.items.push(it);pId=it.id;pRender();pSave();};
+$("pDup").onclick=()=>{const it=pOf(pId);if(!it)return;
+  const c=Object.assign({},it,{id:"n"+Date.now().toString(36),name:it.name+" 복제"});
+  P.items.push(c);pId=c.id;pRender();pSave();};
+$("pDel").onclick=async()=>{const it=pOf(pId);if(!it)return;
+  if(!await MF.ask({title:"프리셋 삭제",text:`「${it.name}」을 지웁니다.`,ok:"지우기",danger:true}))return;
+  P.items=P.items.filter((x)=>x.id!==it.id);pId="";pRender();pSave();};
+$("pTokens").innerHTML=TOKENS.map((t)=>`<button class="tok" data-t="${esc(t)}">${esc(t)}</button>`).join("");
+for(const b of $("pTokens").querySelectorAll("[data-t]"))b.onclick=()=>{
+  const el=$("pChat");if(el.disabled)return;
+  const i=el.selectionStart??el.value.length;
+  el.value=el.value.slice(0,i)+b.dataset.t+el.value.slice(el.selectionEnd??i);
+  el.focus();el.selectionStart=el.selectionEnd=i+b.dataset.t.length;pTouch();};
+$("pSend").onclick=async()=>{
+  // 서버는 **저장된** 값을 본다 — 스위치만 켜고 저장하지 않았으면 안 나간다
+  if(!SET.greet_on){toast("인사 기능이 꺼져 있습니다 — 「인사」 갈래에서 먼저 켜고 저장하세요");return;}
+  if(!await MF.ask({title:"지금 보내 보기",
+    text:"게임에 실제로 보냅니다. 주변 사람에게 그대로 보입니다.",ok:"보내기"}))return;
+  const b=$("pSend");b.disabled=true;
+  try{const r=await api("/api/greet/test",{id:pId,kind:pKind});
+    toast(r&&r.ok!==false?"보냈습니다":"보내지 못했습니다: "+((r&&(r.message||r.error))||""),
+          r&&r.ok!==false?"ok":"");
+  }finally{b.disabled=false;}};
+
+/* ── 불러오기 ── */
+/* **값이 채워지기 전엔 저장이 잠긴다**. 못 불러온 채 0·꺼짐을 그려 두고 저장을 열어 두면
+   그 값이 실제로 저장됐다 — 인사가 꺼지거나 대기가 0 이 된다. */
+let loaded=false;
+function lockSave(on,why){$("save").disabled=!!on;$("cancel").disabled=!!on;
+  if(on){for(const el of NUMS){const sp=el.querySelector("span");if(sp)sp.textContent="—";}
+    say(why||"값을 불러오는 중 — 채워지기 전엔 저장이 잠깁니다",why?"bad":"");}}
+async function load(){
+  lockSave(true);
+  const d=await api("/api/settings?nocli=1");
+  if(d&&d.settings){SET=d.settings;cur=Object.assign({},d.settings);loaded=true;lockSave(false);paint();}
+  else{const why=(d&&(d.message||d.error))||"응답 없음";
+    toast("설정을 불러오지 못했습니다: "+why);lockSave(true,"설정을 불러오지 못했습니다 ("+why+") — 저장이 잠겨 있습니다");}
+  const r=await api("/api/presets");
+  if(r&&r.ok!==false)P={items:r.items||[],pick:r.pick||P.pick,by_song:r.by_song||{}};
+  pRender();
+  if(loaded)say(cur.greet_on?"인사가 켜져 있습니다 — 게임에 실제로 나갑니다":"인사는 꺼져 있습니다",
+      cur.greet_on?"ok":"");
+  api("/api/health").then((h)=>{$("ver").textContent=h&&h.version?`v${h.version}`:"";}).catch(()=>{});
+  api("/api/now").then((n)=>{if(n&&n.title){
+    pSample=Object.assign({},pSample,{song:n.title,duration:n.tot||pSample.duration,mates:(n.ens||{}).n||0});
+    pPreview();}}).catch(()=>{});
+  pkLoad();}
+
+/* ── 행동·표정 고르기 (앱 안의 목록판) ─────────────────────────────────────────────
+   목록은 게임에서 온다 — `/api/social` 은 CLI 를 탄다. 게임에 안 붙어 있으면 ok:false 가 오고,
+   그때는 판 안에 「게임에 연결되면 목록이 옵니다」를 적는다. **직접 적는 것은 언제나 된다.**
+   아래 greet-picker 구간은 DOM 을 모르는 순수 함수다 — tests/js/greet_picker.js 가 떼어 node 로 돌린다. */
+/* greet-picker:begin */
+const PK_EMPTY_MSG="게임에 연결되면 목록이 옵니다";
+function pkEsc(s){return String(s??"").replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}   // ' 도 (보안)
+// 찾기 — 공백·앞의 「/」·대소문자를 무시한다 (「ㅇㅅ」 로도, 「/ㅇㅅ」 로도, 「인사」 로도 찾는다)
+function pkNorm(s){return String(s??"").toLowerCase().replace(/[\s/]+/g,"");}
+function pkFilterActs(list,q){
+  const n=pkNorm(q);
+  const ok=(list||[]).filter((x)=>x&&((x.ChatCommands||[]).length||x.DisplayName));
+  if(!n)return ok;
+  return ok.filter((x)=>pkNorm(x.DisplayName).includes(n)||(x.ChatCommands||[]).some((c)=>pkNorm(c).includes(n)));}
+function pkFilterEmos(list,q){
+  const n=pkNorm(q);
+  const ok=(list||[]).filter((x)=>x&&(x.EmojiText||x.DisplayName));
+  if(!n)return ok;
+  return ok.filter((x)=>pkNorm(x.DisplayName).includes(n)||pkNorm(x.EmojiText).includes(n));}
+// 값 하나 = 행동이면 그 행의 첫 명령(명령이 없으면 이름), 표정이면 그림글자(없으면 이름)
+const pkActValue=(x)=>String(((x.ChatCommands||[])[0])||x.DisplayName||"");
+const pkEmoValue=(x)=>String(x.EmojiText||x.DisplayName||"");
+// 판 안에 그릴 글 — state: "loading" | "off"(게임 미연결·실패) | "ok"
+function pkMsgHTML(state,nAll,nShown){
+  if(state==="loading")return `<div class="pk-msg">목록을 받는 중…</div>`;
+  if(state!=="ok")return `<div class="pk-msg"><b>${PK_EMPTY_MSG}</b><br>지금은 칸에 직접 적어 넣으세요 — 적은 그대로 게임에 나갑니다.</div>`;
+  if(!nAll)return `<div class="pk-msg">게임이 알려 준 항목이 없습니다 — 칸에 직접 적어 넣으세요.</div>`;
+  if(!nShown)return `<div class="pk-msg">맞는 항목이 없습니다 — 적은 그대로 씁니다.</div>`;
+  return "";}
+// 행동 — **한 행동 = 한 행**. 별칭(/손인사1 · /ㅇㅅ)은 그 행 안의 조각이다.
+function pkActHTML(list,cur,act){
+  const v=String(cur??"").trim();
+  return list.map((x,i)=>{
+    const cmds=(x.ChatCommands||[]).map(String);
+    const on=!!v&&(cmds.includes(v)||(!cmds.length&&x.DisplayName===v));
+    return `<div class="pk-row${on?" on":""}${i===act?" act":""}" role="option" aria-selected="${on}" data-i="${i}" data-v="${pkEsc(pkActValue(x))}">`
+      +`<span class="nm">${pkEsc(x.DisplayName||cmds[0]||"")}</span>`
+      +(cmds.length?`<span class="pk-cmds">${cmds.map((c)=>
+        `<span class="pk-chip${c===v?" on":""}" data-v="${pkEsc(c)}">${pkEsc(c)}</span>`).join("")}</span>`:"")
+      +`</div>`;}).join("");}
+// 표정 — 타일: 큰 그림글자 + 아래 이름
+function pkEmoHTML(list,cur,act){
+  const v=String(cur??"").trim();
+  return `<div class="pk-grid">`+list.map((x,i)=>{
+    const val=pkEmoValue(x),on=!!v&&val===v;
+    return `<div class="pk-tile${on?" on":""}${i===act?" act":""}" role="option" aria-selected="${on}" data-i="${i}" data-v="${pkEsc(val)}" title="${pkEsc(x.DisplayName||"")}">`
+      +`<span class="em">${pkEsc(x.EmojiText||"")}</span><span class="nm">${pkEsc(x.DisplayName||"")}</span></div>`;}).join("")+`</div>`;}
+// 판 안 전체 — 안내 글이 있으면 그것, 없으면 행동 행들 / 표정 타일
+function pkListHTML(k,state,nAll,shown,cur,act){
+  return pkMsgHTML(state,nAll,shown.length)||(k==="act"?pkActHTML(shown,cur,act):pkEmoHTML(shown,cur,act));}
+// ↑↓ — 한 칸씩 (표정 격자는 읽는 차례대로). 끝에서 멈춘다(돌아가지 않는다).
+function pkMove(act,n,step){
+  if(n<=0)return -1;
+  if(act<0)return step>0?0:n-1;
+  return Math.max(0,Math.min(n-1,act+step));}
+/* greet-picker:end */
+
+const PK={social:{state:"loading",act:[],emo:[],at:0},open:""};
+const PKK={act:{inp:"pAct",btn:"pkActBtn",panel:"pkActPanel",q:"pkActQ",list:"pkActList"},
+           emo:{inp:"pEmo",btn:"pkEmoBtn",panel:"pkEmoPanel",q:"pkEmoQ",list:"pkEmoList"}};
+const pkState={act:{shown:[],active:-1},emo:{shown:[],active:-1}};
+function pkLoad(){
+  PK.social.state="loading";PK.social.at=Date.now();pkPaint();
+  return api("/api/social").then((sc)=>{
+    if(!sc||sc.ok===false){PK.social.state="off";pkPaint();return;}
+    PK.social={state:"ok",act:sc.behaviours||[],emo:sc.facials||[],at:Date.now()};pkPaint();
+  }).catch(()=>{PK.social.state="off";pkPaint();});}
+function pkPaint(kind){
+  for(const k of kind?[kind]:["act","emo"]){
+    const K=PKK[k],st=pkState[k];if(!$(K.list))continue;
+    const all=k==="act"?PK.social.act:PK.social.emo;
+    st.shown=PK.social.state==="ok"?(k==="act"?pkFilterActs:pkFilterEmos)(all,$(K.q).value):[];
+    if(st.active>=st.shown.length)st.active=st.shown.length-1;
+    // 글은 전부 …HTML 조립 함수(안에서 pkEsc)를 지난다 — 게임에서 온 이름을 날로 넣지 않는다
+    $(K.list).innerHTML=pkListHTML(k,PK.social.state,all.length,st.shown,$(K.inp).value,st.active);}}
+function pkOpen(k,q){
+  if($(PKK[k].inp).disabled)return;
+  if(PK.open&&PK.open!==k)pkClose();
+  // 게임에 안 붙어 있었으면 열 때 한 번 더 물어본다 (15초에 한 번까지 — CLI 를 두드리지 않는다)
+  if(PK.social.state==="off"&&Date.now()-PK.social.at>15000)pkLoad();
+  const K=PKK[k];PK.open=k;
+  $(K.q).value=q||"";pkState[k].active=-1;
+  $(K.panel).hidden=false;
+  for(const id of [K.inp,K.btn])$(id).setAttribute("aria-expanded","true");
+  pkPaint(k);
+  const on=$(K.list).querySelector(".on");          // 지금 값이 목록 가운데쯤 보이게
+  if(on)on.scrollIntoView({block:"nearest"});
+  $(K.panel).scrollIntoView({block:"nearest"});}
+function pkClose(){
+  if(!PK.open)return false;
+  const K=PKK[PK.open];PK.open="";
+  $(K.panel).hidden=true;
+  for(const id of [K.inp,K.btn])$(id).setAttribute("aria-expanded","false");
+  return true;}
+// 고르면 칸을 채우고 **칸에 글을 친 것과 똑같이** input 사건을 낸다 — 그래야 pTouch(저장·미리보기)가 그대로 돈다.
+let pkSetting=false;
+function pkPick(k,v){
+  const el=$(PKK[k].inp);if(el.disabled)return;
+  el.value=v;
+  pkSetting=true;try{el.dispatchEvent(new Event("input",{bubbles:true}));}finally{pkSetting=false;}
+  pkClose();el.focus();}
+function pkKey(k,e){
+  const st=pkState[k];
+  if(e.key==="ArrowDown"||e.key==="ArrowUp"){
+    e.preventDefault();
+    if(PK.open!==k){pkOpen(k,$(PKK[k].inp).value);return;}
+    st.active=pkMove(st.active,st.shown.length,e.key==="ArrowDown"?1:-1);pkPaint(k);
+    const a=$(PKK[k].list).querySelector(".act");if(a)a.scrollIntoView({block:"nearest"});
+    return;}
+  if(e.key==="Enter"&&PK.open===k&&st.active>=0&&st.shown[st.active]){
+    e.preventDefault();
+    pkPick(k,(k==="act"?pkActValue:pkEmoValue)(st.shown[st.active]));}}
+for(const k of ["act","emo"]){
+  const K=PKK[k];
+  $(K.btn).onclick=(e)=>{e.stopPropagation();if(PK.open===k)pkClose();else{pkOpen(k,"");$(K.q).focus();}};
+  // 칸에 치면 목록이 그 글로 걸러진다 (예전 datalist 처럼) — 고르기로 채운 것은 제외
+  $(K.inp).addEventListener("input",()=>{if(pkSetting)return;
+    if(PK.open===k){$(K.q).value=$(K.inp).value;pkState[k].active=-1;pkPaint(k);}
+    else if(PK.social.state==="ok"&&$(K.inp).value.trim())pkOpen(k,$(K.inp).value);});
+  $(K.q).addEventListener("input",()=>{pkState[k].active=-1;pkPaint(k);});
+  $(K.inp).addEventListener("keydown",(e)=>pkKey(k,e));
+  $(K.q).addEventListener("keydown",(e)=>pkKey(k,e));
+  $(K.list).addEventListener("click",(e)=>{
+    const t=e.target.closest("[data-v]");            // 조각이 먼저 잡힌다 — 행을 누르면 첫 명령
+    if(t&&$(K.list).contains(t))pkPick(k,t.dataset.v);});
+  $(K.list).addEventListener("mousedown",(e)=>e.preventDefault());   // 누르는 동안 찾기 칸 포커스를 뺏지 않는다
+}
+// 프리셋을 바꾸거나 없으면 칸이 잠긴다 — ▾ 도 같이 잠그고, 열려 있던 판은 닫는다. 값이 바뀌면 금색 표시도 다시.
+{const was=pRender;
+ pRender=function(){was.apply(null,arguments);
+   for(const k of ["act","emo"]){const d=$(PKK[k].inp).disabled;$(PKK[k].btn).disabled=d;if(d&&PK.open===k)pkClose();}
+   if(PK.open)pkPaint(PK.open);};}
+// Esc 는 판부터 닫는다 — 판이 없을 때만 화면의 Esc(돌아가기)로 간다. 붙잡기 단계에서 먼저 받는다.
+document.addEventListener("keydown",(e)=>{
+  if(e.key==="Escape"&&PK.open){e.preventDefault();e.stopImmediatePropagation();
+    const k=PK.open;pkClose();$(PKK[k].inp).focus();}},true);
+// 판 밖을 누르면 닫는다
+document.addEventListener("pointerdown",(e)=>{
+  if(!PK.open)return;const K=PKK[PK.open];
+  if($(K.panel).contains(e.target)||e.target.closest(".pick")===$(K.inp).parentNode)return;
+  pkClose();});
+
+/* ── 「이 곡」 갈래 — 곡별 인사 지정 (팝업이 아니라 **화면**) ─────────────
+   미니 화면에서 `?song=<key>&title=<t>` 를 달고 넘어온다. 곡이 없으면 갈래를 아예 감춘다
+   (settings.html 이 밖에서 PC 전용 갈래를 감추는 것과 같은 방식 — data-off).
+
+   예전에는 미니 화면에서 작은 메뉴를 띄워 골랐다. 그 메뉴는 폰에서 화면 절반을
+   가리고, 목록이 길면 잘리고, 「만들기·편집」을 누르면 **어차피 화면이 넘어갔다** —
+   같은 일을 두 가지 모양으로 하고 있었다. 설정과 같은 모양(화면 전환)으로 맞춘다. */
+/* 조사 — 앞말의 끝소리에 받침이 있으면 a(을·은·이), 없으면 b(를·는·가).
+   「첫사랑」**를** 로 나가던 것을 고친다. 곡 이름은 끝이 괄호·기호·공백일 때가 많아
+   **마지막 한글·숫자·영문 한 자**를 본다. 숫자는 읽는 소리(0 영·1 일·3 삼·6 육·7 칠·8 팔 = 받침),
+   영문처럼 소리를 모르는 끝은 「을(를)」 로 둘 다 적는다 — 틀리게 적느니 둘 다 보인다.
+   tests/test_f5_folio_settings.py 가 이 함수를 떼어 node 로 돌려 본다. */
+function josa(word,a,b){
+  const m=/([가-힣0-9A-Za-z])[^가-힣0-9A-Za-z]*$/.exec(String(word??""));
+  if(!m)return a+"("+b+")";
+  const c=m[1];
+  if(/[0-9]/.test(c))return "013678".includes(c)?a:b;
+  if(!/[가-힣]/.test(c))return a+"("+b+")";
+  return (c.charCodeAt(0)-0xAC00)%28?a:b;
+}
+let firstTab="s-greet";
+(function(){
+  const qs=new URLSearchParams(location.search);
+  const key=qs.get("song")||"";
+  const sec=$("s-song"),nav=document.querySelector('.nav[data-s="s-song"]');
+  if(!key){sec.dataset.off="1";nav.hidden=true;return;}   // 평소에는 이 갈래가 아예 없다
+  firstTab="s-song";                                       // 곡을 들고 왔으면 그 갈래부터
+  const t=qs.get("title")||key;
+  $("songName").textContent="「"+t+"」"+josa(t,"을","를")+" 틀 때 보낼 인사를 고르세요. 안 고르면 기본 프리셋으로 나갑니다.";
+
+  function draw(){
+    const list=(P.items||[]).filter((x)=>x.kind==="start");
+    const now=(P.by_song||{})[key]||"";
+    const host=$("songList");
+    host.textContent="";                            // **글자는 코드로 넣는다** (innerHTML 에 날값 금지)
+    if(!list.length){
+      const e=document.createElement("div");
+      e.className="empty";
+      e.textContent="만들어 둔 시작 프리셋이 없습니다 — 「프리셋」 갈래에서 하나 만들어 주세요.";
+      host.appendChild(e);
+      return;
+    }
+    for(const x of list.concat([{id:"",name:"지정 안 함 (기본 프리셋)"}])){
+      const b=document.createElement("button");
+      b.type="button";
+      b.className="p"+(x.id===now?" on":"");
+      const nm=document.createElement("span");nm.className="nm";nm.textContent=x.name;
+      b.appendChild(nm);
+      if(x.id===now){const s=document.createElement("span");s.className="star";s.textContent="지정됨";b.appendChild(s);}
+      b.onclick=()=>pick(x.id);
+      host.appendChild(b);
+    }
+  }
+
+  async function pick(id){
+    const p={};p[key]=id;
+    const r=await api("/api/presets",{by_song:p});
+    if(!r||r.ok===false){toast("지정하지 못했습니다: "+((r&&(r.message||r.error))||""));return;}
+    P.by_song=P.by_song||{};P.by_song[key]=id;
+    draw();
+    toast(id?"이 곡의 인사를 지정했습니다":"지정을 지웠습니다","ok");
+  }
+
+  /* 프리셋 목록이 새로 들어올 때마다 같이 다시 그린다 — **여기서 만들고 바로 고를 수
+     있어야 한다.** 예전 메뉴에서는 그게 안 돼 화면을 두 번 오갔다. */
+  const was=pRender;
+  pRender=function(){ was.apply(null, arguments); draw(); };
+  draw();
+})();
+
+/* 곡을 들고 왔으면 「이 곡」부터, 아니면 보던 갈래(없으면 「인사」)부터 */
+if(firstTab!=="s-song"){try{firstTab=sessionStorage.getItem("mf.greet.tab")||firstTab;}catch(e){}}
+showSec(firstTab);
+load();
+</script>
+<script src="/js/shell.js"></script>
+</body>
+</html>
