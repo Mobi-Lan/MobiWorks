@@ -58,11 +58,12 @@ ERR_HINT = {
     "no_completed_work": "아직 완료된 가공이 없습니다",
     "no_completed_work_at_facility": "이 시설에 완료된 가공이 없습니다",
     "blocked": "게임 화면의 창을 닫은 뒤 「시작」",
-    "disconnected": "게임과 연결이 끊겼습니다",
+    "disconnected": "게임과 연결이 끊겼습니다 — 게임을 확인한 뒤 「▶ 시작」",
     "game_off": "게임이 꺼져 있습니다",
     "timeout": "응답이 없었습니다 — 게임 상태를 확인하세요",
+    "loading": "게임이 로딩 중이었습니다 — 게임에 들어간 뒤 「▶ 시작」",
     "stopped_by_user": "게임에서 정지했습니다 — 이어하려면 「▶ 시작」",
-    "max_passes": "반복 상한에 닿았습니다. 설정에서 올리거나 캘 개수를 나누세요",
+    "max_passes": "반복 상한에 닿았습니다. 설정에서 올리거나 개수를 나누세요",
     "not_enough_currency": "정령의 날개가 부족합니다",
     "required_consumable_missing": "채집에 필요한 소모품이 없습니다",
     "no_route": "채집지까지 갈 수 없습니다",
@@ -276,26 +277,29 @@ def prog_of(it: dict, rep: int = 1) -> dict:
                 else f"수령 {_fmt(_n(p.get('done')))} / {_fmt(c)}건{acc}",
                 "pct": None if fresh else min(100, round(_n(p.get("done")) / max(1, c) * 100))}
     if t == "gather":
+        # 채집 = 개수(target). 진행은 「지나간 회/예상 회 · +가방으로 센 개수/목표 개수」 (N3 — 개수로 받고 가방으로 센다).
+        # `ui/js/board.js` 의 `progOf` 와 **한 글자도 다르면 안 된다** (`tests/test_viewmodel.py` 대조).
         target = _n(it.get("target"))
+        n = _n(p.get("passesPlanned")) or wq.gather_plan(target)["passesPlanned"]
         got = _n(p.get("done"))
+        ps = _n(p.get("passes"))
         bag = f" · 가방 {_fmt(_n(p.get('have')))}" if p.get("have") is not None else ""
-        fresh = st == "pending" and not p.get("passes")
-        # **도는 동안의 숫자** — `ui/js/board.js` 의 `progOf` 와
-        # **한 글자도 다르면 안 된다.** 두 화면이 같은 상태를 다르게 말하면 어느 쪽이 맞는지
-        # 아무도 모르게 된다 (`tests/test_viewmodel.py` 가 그걸 지킨다 — 실제로 여기서 잡혔다).
+        fresh = st == "pending" and not ps
         live = _n(p.get("live")) if (st == "running" and p.get("live") is not None) else None
         now = got + live if live is not None else got
-        pct = 100 if st == "done" else (min(100, round(now / target * 100)) if target else 0)
         if fresh:
-            txt = f"{_fmt(target)}개 캐기"
+            h = _n(p.get("have"))
+            txt = f"{_fmt(n)}회 · 날개 {_fmt(n * 5)}" + (f" · 가방 {_fmt(h)} → 목표 {_fmt(h + target)}"
+                                                       if p.get("have") is not None else "")
         elif st == "running" and live is None:
-            # 한 회가 끝나야 회신이 온다 — 그 사이 숫자는 **올라갈 수 없다.**
-            # 올라갈 것처럼 두면 사람이 「멈췄다」로 읽는다.
-            txt = f"{_fmt(got)}… / {_fmt(target)}개 · {_n(p.get('passes')) + 1}회째 도는 중{bag}{acc}"
+            # 넘칠 수 없는 회(남은 100개 이상)는 가방을 도중에 읽지 않는다 — 그 사이 개수는 올라갈 수 없다. 몇 회째인지만 적는다
+            txt = f"{_fmt(ps)}/{_fmt(n)}회 · +{_fmt(got)}/{_fmt(target)}개 · {_fmt(ps + 1)}회째 도는 중{bag}{acc}"
         else:
-            txt = (f"{_fmt(now)} / {_fmt(target)}개 · {_n(p.get('passes'))}/"
-                   f"{p.get('passesPlanned') if p.get('passesPlanned') else '?'}회{bag}{acc}")
-        return {"txt": txt, "pct": None if fresh else pct}
+            txt = f"{_fmt(ps)}/{_fmt(n)}회 · +{_fmt(now)}/{_fmt(target)}개{bag}{acc}"
+        # 반올림은 JS Math.round 와 같게 (.5 는 올림 — 파이썬 round 는 짝수 쪽으로 간다)
+        pct = None if fresh else (100 if st == "done" else
+                                  (min(100, int(now * 100 / target + 0.5)) if target else 0))
+        return {"txt": txt, "pct": pct}
     if t == "alter":
         if st == "waiting":
             n = _n(p.get("passes"))
@@ -416,7 +420,7 @@ def card_view(it: dict, ctx: dict, rep: int = 1) -> dict:
         "plain": pr["txt"] + (" · " + sub if sub else ""),
         "editable": editable(it),
         "unit": "개" if g else ("건" if t == "collect" else "회"),
-        "step": 100 if g else 1,
+        "step": 100 if g else 1,          # 채집은 100 단위로 움직이고 직접 입력은 1~99,999
         "value": _n(it.get("target")) if g else _n(it.get("count"), 1),
     }
     if st == "running":

@@ -1,0 +1,178 @@
+/* live.css — 손님 신청 페이지 (방송 모드 · 시안 B1–B5 · B+)
+   시안 `design/broadcast/MobiFolio-Broadcast.dc.html` 의 크기·색·문구를 그대로 옮긴다. 모바일 우선 360×720.
+
+   색: tokens.css 에 같은 값이 있으면 그 토큰을 쓰고(--fg --strong --sub --sub2 --dim --gold --ongold --golddim
+   --pink --bad2 --warn --warnbg2 --warnline), 시안에만 있는 값은 아래 `--lv-*` 토큰으로 둔다.
+   토큰은 tokens.css 와 같은 4블록(다크 기본 → OS 라이트(고정 안 했을 때) → [data-theme=light] → [data-theme=dark]).
+   다크 값은 시안 그대로, 라이트 값은 tokens.css 라이트 색표에서 고른다. 라이트 두 블록은 같은 문자열이다.
+
+   글꼴: 시안은 IBM Plex Sans KR·Mono 를 쓰지만 사이트 CSP(font-src 'self')상 밖의 글꼴을 못 받는다.
+   본문은 폴리오 화면과 같은 묶음, 코드·숫자는 폴리오가 싣는 Space Mono(/folio/fonts/fonts.css). */
+
+:root{
+  --lv-bg:#0b1018;--lv-bar:#0d1420;--lv-inset:#111a26;--lv-line:#16202c;--lv-rowline:#131c27;--lv-ctl:#23303f;
+  --lv-cardline:#26303d;--lv-dlgline:#2b3a4b;--lv-offline:#1e2a38;
+  --lv-row:#dce3ea;--lv-chip:#c2cad4;--lv-rowsub:#8b97a6;--lv-faint2:#5c6878;
+  --lv-goldfill:rgba(226,184,102,.1);--lv-goldring:rgba(226,184,102,.5);--lv-goldchip:rgba(226,184,102,.14);
+  --lv-nowbg:rgba(226,184,102,.07);--lv-nowline:rgba(226,184,102,.2);--lv-playrow:rgba(226,184,102,.05);
+  --lv-pinkring:rgba(232,138,166,.6);--lv-nobg:rgba(232,138,166,.16);
+  --lv-ok:#7ee6a0;--lv-okbg:rgba(63,181,107,.16);--lv-toastbg:#132519;--lv-toastline:rgba(63,181,107,.5);--lv-toastsub:#9ec9b8;
+  --lv-warnfg:#f0c79a;--lv-warnring:rgba(240,163,90,.6);
+  --lv-scrim:rgba(5,7,11,.6);--lv-shade1:rgba(0,0,0,.35);--lv-shade2:rgba(0,0,0,.5);--lv-shade3:rgba(0,0,0,.6);
+}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--lv-bg:#eef0f3;--lv-bar:#ffffff;--lv-inset:#e9edf2;--lv-line:#d3d9e2;--lv-rowline:#e4e8ee;--lv-ctl:#c4cbd6;--lv-cardline:#d3d9e2;--lv-dlgline:#c4cbd6;--lv-offline:#d3d9e2;--lv-row:#1b2230;--lv-chip:#3a4556;--lv-rowsub:#5d6979;--lv-faint2:#6b7686;--lv-goldfill:rgba(176,127,20,.10);--lv-goldring:rgba(148,107,15,.5);--lv-goldchip:rgba(176,127,20,.14);--lv-nowbg:rgba(176,127,20,.08);--lv-nowline:rgba(176,127,20,.25);--lv-playrow:rgba(176,127,20,.06);--lv-pinkring:rgba(187,69,112,.6);--lv-nobg:rgba(198,77,119,.14);--lv-ok:#178043;--lv-okbg:rgba(31,157,85,.14);--lv-toastbg:#e6f4ea;--lv-toastline:rgba(23,128,67,.45);--lv-toastsub:#3d6b52;--lv-warnfg:#8a4d12;--lv-warnring:rgba(181,101,29,.6);--lv-scrim:rgba(20,30,45,.45);--lv-shade1:rgba(20,30,45,.12);--lv-shade2:rgba(20,30,45,.18);--lv-shade3:rgba(20,30,45,.22)}}
+:root[data-theme="light"]{--lv-bg:#eef0f3;--lv-bar:#ffffff;--lv-inset:#e9edf2;--lv-line:#d3d9e2;--lv-rowline:#e4e8ee;--lv-ctl:#c4cbd6;--lv-cardline:#d3d9e2;--lv-dlgline:#c4cbd6;--lv-offline:#d3d9e2;--lv-row:#1b2230;--lv-chip:#3a4556;--lv-rowsub:#5d6979;--lv-faint2:#6b7686;--lv-goldfill:rgba(176,127,20,.10);--lv-goldring:rgba(148,107,15,.5);--lv-goldchip:rgba(176,127,20,.14);--lv-nowbg:rgba(176,127,20,.08);--lv-nowline:rgba(176,127,20,.25);--lv-playrow:rgba(176,127,20,.06);--lv-pinkring:rgba(187,69,112,.6);--lv-nobg:rgba(198,77,119,.14);--lv-ok:#178043;--lv-okbg:rgba(31,157,85,.14);--lv-toastbg:#e6f4ea;--lv-toastline:rgba(23,128,67,.45);--lv-toastsub:#3d6b52;--lv-warnfg:#8a4d12;--lv-warnring:rgba(181,101,29,.6);--lv-scrim:rgba(20,30,45,.45);--lv-shade1:rgba(20,30,45,.12);--lv-shade2:rgba(20,30,45,.18);--lv-shade3:rgba(20,30,45,.22)}
+:root[data-theme="dark"]{--lv-bg:#0b1018;--lv-bar:#0d1420;--lv-inset:#111a26;--lv-line:#16202c;--lv-rowline:#131c27;--lv-ctl:#23303f;--lv-cardline:#26303d;--lv-dlgline:#2b3a4b;--lv-offline:#1e2a38;--lv-row:#dce3ea;--lv-chip:#c2cad4;--lv-rowsub:#8b97a6;--lv-faint2:#5c6878;--lv-goldfill:rgba(226,184,102,.1);--lv-goldring:rgba(226,184,102,.5);--lv-goldchip:rgba(226,184,102,.14);--lv-nowbg:rgba(226,184,102,.07);--lv-nowline:rgba(226,184,102,.2);--lv-playrow:rgba(226,184,102,.05);--lv-pinkring:rgba(232,138,166,.6);--lv-nobg:rgba(232,138,166,.16);--lv-ok:#7ee6a0;--lv-okbg:rgba(63,181,107,.16);--lv-toastbg:#132519;--lv-toastline:rgba(63,181,107,.5);--lv-toastsub:#9ec9b8;--lv-warnfg:#f0c79a;--lv-warnring:rgba(240,163,90,.6);--lv-scrim:rgba(5,7,11,.6);--lv-shade1:rgba(0,0,0,.35);--lv-shade2:rgba(0,0,0,.5);--lv-shade3:rgba(0,0,0,.6)}
+
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+html{background:var(--lv-bg)}
+body{background:var(--lv-bg);color:var(--fg);overflow:hidden;
+  font:13px/1.35 "Pretendard","Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif;
+  -webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+button,input{font:inherit;color:inherit}
+button{background:none;border:0;padding:0;cursor:pointer}
+[hidden]{display:none!important}
+.mono{font-family:"Space Mono",ui-monospace,Consolas,monospace}
+
+/* 화면 틀 — 폰에서는 화면 전체, 넓은 화면에서는 가운데 한 줄 */
+#app{position:relative;height:100%;height:100dvh;max-width:480px;margin:0 auto;display:flex;flex-direction:column;
+  overflow:hidden;background:var(--lv-bg)}
+
+/* ── 머리줄 48px ── */
+#hdr{display:flex;align-items:center;gap:8px;height:48px;padding:0 16px;border-bottom:1px solid var(--lv-line);
+  background:var(--lv-bar);flex-shrink:0}
+#hdr .logo{color:var(--gold);display:flex}
+#hdr .ttl{font-size:13px;font-weight:700;color:var(--strong);white-space:nowrap}
+#hdr .sp{flex:1}
+#me{font-size:12px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45%}
+
+/* ── B1·B2 입장 ── */
+#entry{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:18px;padding:34px 20px 20px}
+.lead{display:flex;flex-direction:column;gap:6px}
+.lead h1{margin:0;font-size:20px;font-weight:700;color:var(--strong);line-height:1.35}
+.lead p{margin:0;font-size:13px;color:var(--lv-rowsub);line-height:1.6;word-break:keep-all}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:12px;color:var(--sub)}
+.field input{display:block;width:100%;height:48px;padding:0 14px;border-radius:10px;background:var(--lv-inset);
+  border:1px solid var(--lv-ctl);font-size:14px;color:var(--strong);outline:0;-webkit-appearance:none;appearance:none}
+.field input::placeholder{color:var(--lv-faint2);opacity:1}
+.field input.has,.field input:focus{border-color:var(--lv-goldring)}
+#code{font-family:"Space Mono",ui-monospace,Consolas,monospace;font-size:20px;letter-spacing:.14em;text-transform:uppercase}
+#code::placeholder{letter-spacing:.14em}
+.field input.bad,.field input.bad:focus{border-color:var(--lv-pinkring)}
+.err{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--bad2)}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex-shrink:0}
+.err .dot{background:var(--pink)}
+#qrHint{margin-top:-10px;font-size:11px;color:var(--sub2)}
+#entry .grow{flex:1}
+.btn-main{display:flex;align-items:center;justify-content:center;width:100%;height:50px;padding:0 14px;border-radius:12px;
+  background:var(--gold);border:1px solid var(--gold);color:var(--ongold);font-weight:700;font-size:15px;line-height:1;
+  white-space:nowrap;flex-shrink:0}
+.btn-main:disabled{opacity:.6;cursor:default}
+
+/* ── B3 방 ── */
+#room{flex:1;min-height:0;display:flex;flex-direction:column}
+#now{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--lv-nowbg);border-bottom:1px solid var(--lv-nowline);flex-shrink:0}
+.eq{display:flex;align-items:flex-end;gap:2px;height:14px;flex-shrink:0}
+.eq i{width:3px;height:100%;border-radius:1.5px;background:var(--gold);transform-origin:bottom;animation:eqm .9s ease-in-out infinite}
+.eq i:nth-child(2){animation-duration:1.2s;animation-delay:.15s}
+.eq i:nth-child(3){animation-duration:.8s;animation-delay:.3s}
+.eq i:nth-child(4){animation-duration:1.05s;animation-delay:.45s}
+@keyframes eqm{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
+#now .txt{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+#now .lbl{font-size:11px;color:var(--golddim)}
+#now .t{font-size:14px;font-weight:700;color:var(--strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#now .t span{font-weight:400;color:var(--sub);font-size:12px}
+#nowLeft{font-size:11px;color:var(--sub);white-space:nowrap}
+
+#plHead{display:flex;flex-direction:column;gap:9px;padding:12px 16px;border-bottom:1px solid var(--lv-line);flex-shrink:0}
+#plHead .nm{display:flex;align-items:baseline;gap:8px;min-width:0}
+#plName{font-size:17px;font-weight:700;color:var(--strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#plCount{font-size:11px;color:var(--lv-rowsub);white-space:nowrap}
+.search{display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border-radius:10px;background:var(--lv-inset);
+  border:1px solid var(--lv-ctl);font-size:13px;color:var(--lv-faint2)}
+.search:focus-within{border-color:var(--lv-goldring)}
+.search input{flex:1;min-width:0;height:100%;border:0;background:none;outline:0;font-size:13px;color:var(--fg);padding:0}
+.search input::placeholder{color:var(--lv-faint2);opacity:1}
+.search input::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
+
+#list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y}
+.row{display:grid;grid-template-columns:36px 1fr auto;gap:10px;align-items:center;padding:9px 16px;border-bottom:1px solid var(--lv-rowline)}
+.row.playing{background:var(--lv-playrow)}
+.cover{width:36px;height:36px;border-radius:8px;border:1px solid var(--lv-ctl);background:var(--lv-inset);display:flex;
+  align-items:center;justify-content:center;color:var(--lv-faint2);font-size:12px}
+.meta{display:flex;flex-direction:column;gap:2px;min-width:0}
+.meta .t{font-size:14px;font-weight:600;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row.playing .meta .t{color:var(--gold)}
+.meta .s{display:flex;gap:6px;font-size:12px;color:var(--lv-rowsub);white-space:nowrap;min-width:0}
+.meta .s .a{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.meta .s .mono{font-size:11px;flex-shrink:0}
+.empty{padding:28px 16px;text-align:center;font-size:13px;color:var(--lv-rowsub)}
+
+.req{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:32px;padding:0 14px;border-radius:9px;
+  background:var(--lv-goldfill);border:1px solid var(--lv-goldring);color:var(--gold);font-weight:600;font-size:13px;
+  white-space:nowrap;flex-shrink:0;line-height:1}
+.req.off{background:none;border-color:var(--lv-offline);color:var(--dim);font-weight:400;cursor:default}
+.chip{display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:5px;font-size:10px;font-weight:700;
+  white-space:nowrap;flex-shrink:0}
+.chip.play{background:var(--lv-goldchip);color:var(--gold)}
+.chip.wait{background:var(--lv-rowline);color:var(--lv-rowsub)}
+.chip.ok{background:var(--lv-okbg);color:var(--lv-ok)}
+.chip.no{background:var(--lv-nobg);color:var(--bad2)}
+
+/* 아래 고정 띠 「내 신청」 */
+#mine{flex-shrink:0;border-top:1px solid var(--lv-ctl);background:var(--lv-bar);padding:10px 16px 14px;
+  padding-bottom:calc(14px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;
+  box-shadow:0 -8px 20px var(--lv-shade1)}
+#waitNote{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:9px;background:var(--warnbg2);
+  border:1px solid var(--warnline);font-size:13px;color:var(--lv-warnfg)}
+#waitNote .dot{background:var(--warn)}
+#waitNote .mono{color:var(--warn);font-weight:600}
+#mineHead{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--sub);width:100%;text-align:left}
+#mineHead b{color:var(--lv-row)}
+#mineHead .sp{flex:1}
+#mineArrow{color:var(--sub2)}
+#mineList{display:flex;flex-direction:column;gap:8px}
+#mine.open #mineList{max-height:40vh;overflow-y:auto}
+.mrow{display:flex;align-items:center;gap:8px;font-size:13px}
+.mrow .t{flex:1;min-width:0;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ── B4 물음 창 ── */
+#dlg{position:absolute;inset:0;z-index:30}
+#dlg .scrim{position:absolute;inset:0;background:var(--lv-scrim)}
+#dlg .box{position:absolute;left:20px;right:20px;top:50%;transform:translateY(-50%);border-radius:14px;background:var(--lv-bar);
+  border:1px solid var(--lv-dlgline);box-shadow:0 18px 40px var(--lv-shade3);padding:20px 18px 16px;display:flex;flex-direction:column;gap:12px}
+#dlgTitle{margin:0;font-size:15px;font-weight:700;color:var(--strong);word-break:keep-all}
+#dlgText{margin:0;font-size:13px;color:var(--sub);line-height:1.6;word-break:keep-all}
+#dlgText b{color:var(--lv-row)}
+#dlg .btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
+#dlg .btns button{display:inline-flex;align-items:center;justify-content:center;height:44px;padding:0 14px;border-radius:13px;
+  font-size:13px;white-space:nowrap;line-height:1;width:100%}
+#dlgNo{border:1px solid var(--lv-ctl);color:var(--lv-chip)}
+#dlgYes{background:var(--gold);border:1px solid var(--gold);color:var(--ongold);font-weight:700}
+
+/* ── B5 알림 ── */
+#toast{position:absolute;left:16px;right:16px;top:58px;z-index:20;display:flex;align-items:center;gap:10px;padding:11px 14px;
+  border-radius:11px;background:var(--lv-toastbg);border:1px solid var(--lv-toastline);box-shadow:0 10px 24px var(--lv-shade2)}
+#toast .ck{color:var(--lv-ok);font-weight:700}
+#toast .txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+#toast .h{font-size:13px;font-weight:700;color:var(--fg)}
+#toast .s{font-size:12px;color:var(--lv-toastsub)}
+
+/* ── B+ 안내 카드 — 화면 가운데 하나 ── */
+#notice{position:absolute;left:0;right:0;top:48px;bottom:0;z-index:25;display:flex;align-items:center;justify-content:center;
+  padding:20px 16px;background:var(--lv-bg);overflow-y:auto}
+.card{width:300px;max-width:100%;display:flex;flex-direction:column;align-items:center;gap:10px;padding:26px 20px 20px;
+  border-radius:16px;background:var(--lv-bg);border:1px solid var(--lv-cardline);text-align:center}
+#nIcon{width:46px;height:46px;border-radius:50%;border:1px solid var(--lv-faint2);display:flex;align-items:center;
+  justify-content:center;color:var(--lv-faint2);font-size:18px}
+#nIcon.pink{border-color:var(--lv-pinkring);color:var(--lv-pinkring)}
+#nIcon.warn{border-color:var(--lv-warnring);color:var(--lv-warnring)}
+#nTitle{margin:0;font-size:16px;font-weight:700;color:var(--strong)}
+#nText{margin:0;font-size:13px;color:var(--sub);line-height:1.6;word-break:keep-all}
+#nBtn{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:40px;padding:0 14px;border-radius:11px;
+  border:1px solid var(--lv-ctl);color:var(--lv-chip);font-size:13px;white-space:nowrap;line-height:1}
+#nBtn.pri{background:var(--lv-goldfill);border-color:var(--lv-goldring);color:var(--gold);font-weight:600}
+
+@media (prefers-reduced-motion: reduce){.eq i{animation:none;transform:scaleY(.7)}}

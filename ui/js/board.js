@@ -57,7 +57,7 @@ const APP_ERRS=new Set(["tool_not_ok","overweight_soon","max_passes","not_gather
 const ERR_HINT={tool_broken:"도구를 고치거나 새로 장착한 뒤 재시도",tool_not_ok:"이 채집에 맞는 도구가 없습니다",tool_missing:"채집 도구가 없습니다",overweight:"가방을 비우거나 창고에 넣은 뒤 재시도",overweight_soon:"가방이 거의 찼습니다",
   not_enough_ingredient:"부족한 재료를 앞에 담거나 가방으로 옮기세요",insufficient_transfer_cost:"재료를 직접 가방으로 옮기면 됩니다",insufficient_living_skill_level:"지금은 만들 수 없는 레시피입니다",insufficient_facility_level:"지금은 만들 수 없는 레시피입니다",insufficient_decor_score:"지금은 만들 수 없는 레시피입니다",
   invalid_count:"한 번에 만들 수 있는 횟수를 넘었습니다 — 나눠서 담으세요",requires_user_interaction:"게임 안에서 직접 등록해야 하는 가공입니다",not_completed_yet:"아직 완료된 가공이 없습니다",no_completed_work:"아직 완료된 가공이 없습니다",no_completed_work_at_facility:"이 시설에 완료된 가공이 없습니다",
-  blocked:"게임 화면의 창을 닫은 뒤 「시작」",disconnected:"게임과 연결이 끊겼습니다",game_off:"게임이 꺼져 있습니다",timeout:"응답이 없었습니다 — 게임 상태를 확인하세요",stopped_by_user:"게임에서 정지했습니다 — 이어하려면 「▶ 시작」",max_passes:"반복 상한에 닿았습니다. 설정에서 올리거나 캘 개수를 나누세요",
+  blocked:"게임 화면의 창을 닫은 뒤 「시작」",disconnected:"게임과 연결이 끊겼습니다 — 게임을 확인한 뒤 「▶ 시작」",game_off:"게임이 꺼져 있습니다",timeout:"응답이 없었습니다 — 게임 상태를 확인하세요",loading:"게임이 로딩 중이었습니다 — 게임에 들어간 뒤 「▶ 시작」",stopped_by_user:"게임에서 정지했습니다 — 이어하려면 「▶ 시작」",max_passes:"반복 상한에 닿았습니다. 설정에서 올리거나 개수를 나누세요",
   not_enough_currency:"정령의 날개가 부족합니다",required_consumable_missing:"채집에 필요한 소모품이 없습니다",no_route:"채집지까지 갈 수 없습니다",not_in_field:"필드가 아닙니다",facility_not_found:"시설을 찾지 못했습니다",cost_payment_failed:"비용 지불에 실패했습니다",canceled:"다른 명령이 끼어들어 취소됐습니다",
   not_gatherable:"채집 목록에 없는 항목입니다",not_in_cache:"레시피가 캐시에 없습니다 — 「갱신」 뒤 다시",cli_disconnected:"CLI 연결이 없습니다",cli_not_found:"CLI 를 찾지 못했습니다",cli_disabled:"CLI 실행이 차단된 실행입니다"};
 // 보드 op 거절 코드 — 한글 한 줄
@@ -125,24 +125,20 @@ function progOf(it,rep){const p=it.progress||{};const st=it.status;const acc=(p.
   if(it.type==="play"||it.type==="notify"){const fresh=st==="pending"&&!p.done;
     return {txt:it.type==="play"?playProg(it,p,st):(fresh?"알림 예정 (호출 없음 · 날개 0)":"알림 보냄"),pct:null};}
   if(it.type==="collect"){const c=it.count||0;return {txt:st==="pending"&&!p.done?`수령 예정 ${fmtN(c)}건 (1회 호출)`:`수령 ${fmtN(p.done||0)} / ${fmtN(c)}건${acc}`,pct:st==="pending"&&!p.done?null:Math.min(100,Math.round((p.done||0)/Math.max(1,c)*100))};}
-  // 채집 진행 = 이번에 캔 개수(done) / 캘 개수(target). 가방 보유는 참고로만 덧붙인다 — 완료 판정 기준이 아니다
-  if(it.type==="gather"){const t=it.target||0;const got=p.done||0;const bag=p.have!=null?` · 가방 ${fmtN(p.have)}`:"";
-    const pct=st==="done"?100:(t?Math.min(100,Math.round(got/t*100)):0);
-    /* **도는 동안의 숫자**.
-
-       한 회(최대 100개)가 끝나야 회신이 오므로, 그 사이 `done` 은 **올라갈 수 없다.**
-       예전엔 그 자리에 `0 / 100개` 를 띄우고 경과 시간만 흘렸다 —
-       **「멈췄다/고장났다」로 읽힌다.** 올라갈 수 없는 숫자를 올라갈 것처럼 두면 안 된다.
-
-       퀘스트 지킴이를 켜 두면 서버가 `progress.live`(이번 회에 늘어난 개수)를 적어 준다.
-       그때는 **진짜 숫자**를 쓰고, 없으면 **모른다고 적는다**(`…`). 둘을 섞지 않는다. */
+  /* 채집 = 개수(target) (N3). 진행 = 「지나간 회/예상 회 · +가방으로 센 개수/목표 개수 · 가방」.
+     개수는 가방 수로 센다 (시작 전 가방 → 지금 가방). 남은 개수가 100 보다 적은 마지막 회는 서버가 도는 동안
+     가방을 읽어 `progress.live`(이번 회에 늘어난 개수)를 적는다 — 그때는 진짜 숫자를 쓰고, 없으면 「n회째 도는 중」.
+     viewmodel.prog_of 와 **같은 글**. */
+  if(it.type==="gather"){const t=it.target||0;const n=p.passesPlanned||gpass(t);const got=p.done||0;const ps=p.passes||0;
+    const bag=p.have!=null?` · 가방 ${fmtN(p.have)}`:"";
     const live=st==="running"&&p.live!=null?Number(p.live):null;
     const now=live!=null?got+live:got;
-    const txt=st==="pending"&&!p.passes?`${fmtN(t)}개 캐기`
+    const fresh=st==="pending"&&!ps;
+    const txt=fresh?`${fmtN(n)}회 · 날개 ${fmtN(n*5)}${p.have!=null?` · 가방 ${fmtN(p.have)} → 목표 ${fmtN(p.have+t)}`:""}`
       :st==="running"&&live==null
-        ?`${fmtN(got)}… / ${fmtN(t)}개 · ${(p.passes||0)+1}회째 도는 중${bag}${acc}`
-        :`${fmtN(now)} / ${fmtN(t)}개 · ${p.passes||0}/${p.passesPlanned||"?"}회${bag}${acc}`;
-    return {txt,pct:st==="pending"&&!p.passes?null:(t?Math.min(100,Math.round(now/t*100)):pct)};}
+        ?`${fmtN(ps)}/${fmtN(n)}회 · +${fmtN(got)}/${fmtN(t)}개 · ${fmtN(ps+1)}회째 도는 중${bag}${acc}`
+        :`${fmtN(ps)}/${fmtN(n)}회 · +${fmtN(now)}/${fmtN(t)}개${bag}${acc}`;
+    return {txt,pct:fresh?null:(st==="done"?100:(t?Math.min(100,Math.round(now/t*100)):0))};}
   if(it.type==="alter"){if(st==="waiting")return {txt:`등록됨 · 완료 감지 → 수령${p.passes?` · ${p.passes}건`:""}${acc}`,pct:null};
     return {txt:st==="pending"&&!p.done?`${fmtN(it.count||1)}건 등록 예정`:`${fmtN(p.done||0)} / ${fmtN(it.count||1)}건${acc}`,pct:st==="pending"&&!p.done?null:Math.min(100,Math.round((p.done||0)/Math.max(1,it.count||1)*100))};}
   const c=it.count||1;return {txt:st==="pending"&&!p.done?`${fmtN(c)}회 예정${p.per>1?` (×${p.per})`:""}`:`${fmtN(p.done||0)} / ${fmtN(c)}회${p.per>1?` (×${p.per})`:""}${acc}`,pct:st==="pending"&&!p.done?null:Math.min(100,Math.round((p.done||0)/c*100))};}
@@ -228,7 +224,7 @@ function bindQEdit(root){if(!root)return;root.querySelectorAll("[data-qe]").forE
     const cur=()=>{const it=findItem(id);if(!it)return g?0:1;return g?(it.target||0):(it.count||1);};
     // 채집은 100 단위로 움직이고 100 아래로는 안 내려간다 (하한이 1 이면 바닥을 찍은 뒤 값이 전부 …01 이 된다).
     // 직접 입력은 1~99,999 를 그대로 받는다 — 이미 저장된 작은 값도 고칠 수 있어야 한다.
-    cell.querySelectorAll("[data-qst]").forEach((b)=>{const n=Number(b.dataset.qst);holdBtn(b,()=>{if(!findItem(id))return;qEditApply(id,g?{target:Math.max(100,cur()+n)}:{count:cur()+n});});});
+    cell.querySelectorAll("[data-qst]").forEach((b)=>{const n=Number(b.dataset.qst);holdBtn(b,()=>{if(!findItem(id))return;qEditApply(id,g?{target:gstepN(cur(),Math.sign(n))}:{count:cur()+n});});});
     const inp=cell.querySelector("[data-qin]");if(inp){inp.oninput=()=>{const v=Number(inp.value);if(v>=1)qEditApply(id,g?{target:v}:{count:v});};inp.onchange=()=>{inp.value=cur();};}});}
 
 /* ── 재렌더 미루기 ──
@@ -416,6 +412,9 @@ function kbRowHTML(it,o){o=o||{};const col=colOf(it);const st=it.status||"pendin
   if(st==="error"){const hint=errHint(it,"↻");note=`${it.error||"error"}${it.stuck?` · ${it.streak||0}회 연속 · 회차 제외`:""} · ${hint||it.message||""}`;noteCls="bad";}
   else if(st==="running")note=`<i class="sd blink"></i>${esc(stageOf(it))} · ${elapsedHTML(cardStart(it))} · ${esc(pr.txt)}`;
   else if(st==="waiting")note=`<i class="sd warn"></i>가공 대기 · <span data-qw="${esc(it.name||"")}">${esc(waitTxt(it.name))}</span>`;
+  // 채집 대기: 「예상 3회 · 날개 15 · 가방 47 → 목표 297」 (가방을 모르면 「… · 회당 최대 100」)
+  else if(st==="pending"&&it.type==="gather"){const n=itemCalls(it);const h=p.have;
+    note=`${inner?'<i class="sd"></i>대기 · ':""}예상 ${fmtN(n)}회 · 날개 ${fmtN(n*5)} · ${esc(h!=null?`가방 ${fmtN(h)} → 목표 ${fmtN(h+(it.target||0))}`:t.sub)}`;}
   else if(st==="pending")note=`${inner?'<i class="sd"></i>대기 · ':(it.type==="play"||it.type==="notify")?"호출 없음 · ":`예상 ${fmtN(itemCalls(it))}회 · `}${esc(t.sub||pr.txt)}`;
   else note=esc(t.plain);
   const noteHtml=(st==="error")?esc(note):note;
@@ -1029,7 +1028,7 @@ async function openConfirm(){const dlg=$("qConfirm");if(!dlg)return;
     if(r0.kind==="group"){const g=groups.find((x)=>x.id===r0.id)||{};
       return `<div class="cf-i"><span class="i">${i+1}</span><span class="tx"><span>그룹 「${esc(r0.name||"")}」 · ${fmtN(g.repeat||1)}회차${g.loopLeft!=null?` (남은 ${fmtN(g.loopLeft)})`:""} · ${fmtN((r0.children||[]).length)}항목</span><span class="cmd">${esc(r0.detail||"")}</span></span><span class="rt"><span class="calls">${fmtN(g.calls!=null?g.calls:(r0.calls||0))}회</span><span class="cost">${groupWings(g,r0)}</span></span></div>`;}
     const it={...(findItem(r0.id)||{}),...r0};const c=r0.calls!=null?Number(r0.calls):itemCalls(it);const wc=itemWingCalls(it);
-    const text=r0.detail||(it.type==="collect"?`「${it.facility||""}」 완료분 수령 (시설당 1회 호출로 전부)`:it.type==="gather"?`「${it.name}」 채집 ${fmtN(it.target||0)}개 캐기 — 회당 최대 100개, 예상 ${c}회`:it.type==="craft"?`「${it.name}」 제작 ${fmtN(it.count||1)}회`:`「${it.name}」 가공 ${fmtN(it.count||1)}건 등록`);
+    const text=r0.detail||(it.type==="collect"?`「${it.facility||""}」 완료분 수령 (시설당 1회 호출로 전부)`:it.type==="gather"?`「${it.name}」 채집 ${fmtN(it.target||0)}개 캐기 — 예상 ${c}회 (1회 최대 100개 · 날개 5개) · 가방이 목표에 닿으면 멈춤`:it.type==="craft"?`「${it.name}」 제작 ${fmtN(it.count||1)}회`:`「${it.name}」 가공 ${fmtN(it.count||1)}건 등록`);
     // 그룹 자식의 호출·날개는 위의 그룹 줄이 이미 회차까지 곱해 세었다 — 여기서 또 세면 두 번 센 것처럼 보인다
     const rt=r0._in?`<span class="calls">회차당 ${it.type==="gather"?"약 ":""}${fmtN(c)}회</span>`
       :`<span class="calls">${it.type==="gather"?"약 ":""}${fmtN(c)}회</span><span class="cost">${wc?`날개 ${it.type==="gather"?"약 ":""}${fmtN(wc*WINGS_PER_CALL)}`:"—"}</span>`;

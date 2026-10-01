@@ -105,6 +105,25 @@ ingredient quantity, and **ingredient transfer cost**."* — `insufficient_trans
 - **앱의 보유 판정은 가방 + 계정 창고 합산**이다 (게임이 창고 재료를 원격으로 사용 — 이송 비용만 든다). `Owned` 숫자만 가방 기준.
   `work.plan()`/`apply_storage()` 의 `short` 는 합산 기준, `fromStorage` 가 창고에서 이송해야 할 양.
 
+## 3.6 채집 도중 읽기·정지 실측 (2026-09-30, 대표 승인 하에 실기)
+
+`execute_gathering` 이 도는 동안(블로킹 중) 다른 호출을 **잠금 없이** 겹쳐 보냈다.
+
+- **읽기는 채집을 끊지 않는다.** `get_items`·`get_activity` 를 도중에 불러도 채집은 계속됐고, 가방 수가 도중에 올라갔다
+  (한 회 안에서 6 → 16 → 64, 그 회는 100개로 끝남). → 예전 `docs/BOARD.md` §10.6·§10.7 의 「도중에 무엇을 보내든 채집이 취소된다」는
+  **읽기에 대해서는 틀렸다.**
+- **`stop_action` 은 `get_activity.Mode.MainButtonState` 에 따라 갈린다.**
+  - `"Hide"`(채집지 사이를 이동 중): 거절 — `invalid_state` · 「No stoppable action is in progress right now.」
+  - `"Stop"`: 수락 — 「Stop confirmed; no stoppable action remains.」 몇 초 뒤 막혀 있던 `execute_gathering` 이
+    `ok=True · {result:"stopped", message:"Gathering stopped before reaching the goal...", gained: 8, target: 100, cost: "정령의 날개 5 spent, ..."}`
+    로 돌아왔다. `stop_action` 자체는 날개를 쓰지 않는다(채집의 날개 5 는 시작 때 이미 나갔다).
+- **`get_items {"name":"통나무"}`** 는 비슷한 이름(「부드러운 통나무」)까지 목록으로 준다 — `DisplayName` 이 정확히 같은 것만 센다.
+- 연주 쪽: 가만히 있을 때 `play_music_score` → 「Play started」, 곧바로 `stop_action` → 「Stop confirmed」.
+- **채집 중 실행 명령 (실측, 대표 승인)**: 통나무 채집 10초째 `execute_crafting {"displayName":"못","craftCount":1}` → 채집 호출이 **1초 안에**
+  `error=canceled` (「Another command replaced this action…」, gained 0, 날개 5 는 이미 빠짐)로 끝나고 제작은 그대로 완료됐다.
+  앱으로도 확인: 목표 도달 → `stop_action` 이 `invalid_state` → 다음 카드(못 제작)로 넘김 → 채집 `canceled` · 제작 `completed`.
+- **아직 미검증**: 채집 중 `play_music_score` 로 채집을 밀어내는 것(다음 카드가 없고 `stop_action` 이 거절될 때의 길).
+
 ## 4. 실측에서 안 됐거나 믿기 어려운 것
 
 - **이름 끝 공백**: `DisplayTitle`/`Name` 이 `"… "` 로 끝나면 `change_instrument`/`play_music_score` 가
@@ -175,13 +194,41 @@ ingredient quantity, and **ingredient transfer cost**."* — `insufficient_trans
 - **명시 시작만**: `POST /api/queue/start {confirm:true}`. 앱 재시작 후 자동 재개 없음 — `data/queue.json` 의 상태는 기동 시 `pending` 으로 되돌린다(`done` 은 유지).
 - **체인 실행**: 항목이 끝나거나 오류가 나면 다음 항목으로 넘어간다 (`onError=continue`, 기본). `onError=stop` 이면 첫 오류에서 멈춘다.
   단 **다음 항목도 성공할 수 없는 오류**는 설정과 무관하게 체인을 멈추고 `stopReason=fatal:<error>` 로 남긴다 — `FATAL_ERRORS`:
-  연결 계열(`cli_not_found`·`cli_disabled`·`spawn_failed`·`disconnected`·`game_off`·`timeout`)과 `blocked{kind}`(사람이 게임 창을 닫아야 함).
-- **자동 재시도 없음.** 오류 항목은 사용자가 `reset` 해야 다시 돈다.
-- **채집**: 회당 최대 100개(카탈로그). 큐 항목의 `target` 은 **이번에 캘 개수**다 — 보유량을 그 수까지 채우는 목표가 아니라서
-  보유를 빼지 않는다. 완료 판정도 회신 `gained` 의 누적(`progress.done`)으로 하고, 가방 보유(`progress.have`)는 표시용이다.
-  예상 반복은 `ceil(target / 100)`, `queue_max_passes`(기본 50)를 넘으면 담는 순간 거부.
+  연결 계열(`cli_not_found`·`cli_disabled`·`spawn_failed`·`disconnected`·`game_off`·`timeout`)과 `blocked{kind}`(사람이 게임 창을 닫아야 함),
+  게임 로딩이 끝나지 않음(`loading`).
+- **실행 명령은 다시 보내지 않는다** (날개 5). **읽기는 짧게 다시 읽는다** (N4, 2026-09-30): 상태 점검 `get_activity`·가방 `get_items`·
+  도구 `get_gatherable_items`·무게 `get_inventory` 가 `disconnected`·`timeout`·`game_off`·`cli_disconnected` 면 3초·6초 쉬고 두 번 더 읽는다
+  (`READ_RETRY_WAITS`). 그래도 안 되면 그 코드 그대로 멈추고 안내는 「게임과 연결이 잠깐 끊겼습니다 — 재시도 2회 후 멈춤」.
+  `loading`(재접속·캐릭터 선택 — 오류 `loading` · `blocked kind=loading` · 본문 `loading:true`)이면 5초마다 다시 보며 최대 3분
+  기다렸다 잇는다 (`LOADING_POLL`·`LOADING_MAX`). ▶ 시작의 연결 확인(`status`)도 끊겨 있으면 같은 간격으로 두 번 더 본다(잠금 밖).
+  큐가 도는 동안은 러너 스레드가 `SetThreadExecutionState(ES_CONTINUOUS|ES_SYSTEM_REQUIRED)` 로 윈도 절전을 막고 끝나면 푼다.
+  오류 항목은 사용자가 `reset` 해야 다시 돈다.
+- **채집 = 개수, 가방으로 세고 목표에서 끊는다** (N3, 2026-09-30 대표 결정 — 1.0.9 의 「n회」 입력은 반려됐다):
+  사용자는 **개수**(`target`, 1~99,999 — 스테퍼는 100 눈금, 직접 입력 자유)를 넣는다. 회수는 ⌈target/100⌉ 로 따라 나오고
+  화면은 「3회 · 날개 15 · 가방 47 → 목표 297」로 적는다. `ceil(target/100) > queue_max_passes`(기본 50)면 담는 순간 거부.
+  진행·결과는 **가방 수**다: 시작 전 `get_items`(`progress.bag0`) → 매 회 뒤 `get_items`(`progress.have`),
+  `progress.done` = 지금 가방 − `bag0` (카드 「2/3회 · +187/250개 · 가방 293」). 가방을 못 읽은 회만 회신 `gained` 로 메운다.
+  **매 회 전에 `done >= target` 이면 끝낸다** — 목표에 닿은 뒤에는 다음 회를 부르지 않는다. `passesPlanned` 는 매 회 전
+  「지나간 회 + ⌈남은 개수/100⌉」로 다시 센다(1회에 100개보다 적게 들면 늘어난다).
+  **남은 개수가 100 보다 적은 회**(넘칠 수 있는 회)는 도는 동안 3초마다(`GOAL_POLL`) 잠금 없이 `get_items {"name": 이름}` 을 읽는다
+  (§3.6 실측 — 읽기는 채집을 끊지 않는다. 비슷한 이름도 오므로 `DisplayName` 이 같은 것만 센다). 가방이 `bag0 + target` 에 닿으면:
+  1. `stop_action` 1회. 받아들여지면 몇 초 뒤 채집 호출이 `ok · result=stopped · gained` 로 돌아온다 — **이 카드의 완료**다(실패·재시도 아님).
+  2. `invalid_state`(이동 중 — `MainButtonState == "Hide"`)면:
+     - **다음에 돌 작업 카드(채집·제작·가공·수령)가 있으면** 더 기다리지 않고 그 카드로 넘어간다. 그 카드의 실행 명령이 도는 채집을
+       갈아치우고(카탈로그 「canceled = 다른 명령이 이 행동을 대신했다」) 채집 호출은 뒤에서 `canceled` 로 돌아온다 — **실측 확인**(§3.6).
+       넘긴 동안 러너의 CLI 호출은 잠금 없이 나간다(넘긴 채집이 잠금을 쥐고 있다). 다음 카드의 상태 점검은 그대로 먼저 돈다.
+     - **없으면** 지금 든 악기로 악보 하나(폴리오 대기열의 지금 곡, 없으면 보관함 첫 악보 — 탈것 위면 안 함)를 `play_music_score` 로
+       틀어 채집을 밀어내고 곧바로 `stop_action` 으로 연주를 멈춘다 — **미검증**(§3.6).
+     - 틀 수 없으면(악기·악보 없음·탈것·거절) `stop_action` 을 1.5초마다 최대 20번 다시 보낸다. `MainButtonState == "Hide"` 인 동안은
+       보내지 않고 그 시도만 로그에 적는다. 끝내 안 되면 그 회가 끝날 때까지 둔다(넘친 만큼 더 캔다).
+     넘기기·밀어내기·못 끊음은 카드 로그와 이벤트 줄(`kind: "gather"`)에 남는다.
+  ■ 사용자 정지는 예전 그대로(`stop_action` 1회 → 카드 `stopped`). 목표 전에 게임이 `result=stopped` 로 끝낸 것은 예전처럼 이 카드의 오류다.
+  두 회 연속 가방이 안 늘면 `no_progress`.
+  호환: 요청의 `target`(개수)이 먼저, 1.0.9 화면이 보내는 `runs`(담기)·`count`(고치기)는 회수라 ×100 개로 읽는다.
+  1.0.9 가 저장한 회수 카드(`runs`)는 불러올 때 한 번 `target = runs×100` 으로 옮긴다 — 1.0.9 가 1.0.7 의 개수 카드를 회수로 바꾸며 남긴
+  로그 「개수 → 회수로 바뀜: 250개 → 3회」가 있으면 그 개수(250)로 되돌린다. 1.0.7 의 개수 카드는 그대로다.
   매 회 전에 `get_gatherable_items` 로 `ToolOk`(false → `tool_not_ok`), `get_inventory` 로 무게
-  (`cur >= max - queue_weight_margin` → `overweight_soon`)를 확인하고, 매 회 뒤 `get_items` 로 가방 보유를 다시 읽어 캐시를 갱신한다.
+  (`cur >= max - queue_weight_margin` → `overweight_soon`)를 확인한다.
   시작 뒤 끊긴 오류(`overweight`·`tool_broken`·`blocked`)도 응답의 `gained` 를 부분 획득으로 기록한다.
   **한 개도 못 캔 회차가 2회 연속**이면 `no_progress` 로 끊는다 (빈 병 등 소모품 소진 — 안 끊으면 상한까지 날개만 태운다).
   옛 저장본(`target` = 보유 + 부족분)은 로드 때 `progress.have` 를 빼서 한 번만 보정하고 `targetMigrated` 로 표시한다.

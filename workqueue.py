@@ -8,9 +8,15 @@
 안전 원칙 (docs/CLI.md §7):
 - 러너는 POST /api/queue/start {confirm:true} 로만 돈다. 앱 재시작 후 자동 재개 없음 — 저장된 큐는 상태를 pending 으로 되돌린다.
 - 오류는 그 항목만 error 로 두고 계속한다. 단 **다음 항목도 성공할 수 없는 오류**(연결 끊김·blocked)는 체인을 멈춘다 (FATAL_ERRORS).
-  자동 재시도는 없다. blocked{kind} 는 사람이 게임 창을 닫아야 한다.
-- 채집은 회당 최대 100개(CLI 규정). target 은 **이번에 캘 개수**이고 완료 판정은 응답 gained 누적으로 한다
-  (가방 보유로 재면 이미 가진 만큼 덜 캔다). 매 회 전에 도구(ToolOk)·무게를 확인하고, 매 회 뒤 가방을 다시 읽어 표시에 쓴다.
+  실행 명령(execute_*)은 날개가 들어 자동으로 다시 보내지 않는다. **읽기**(get_activity·get_items·도구·무게)는
+  연결 계열 오류면 짧게 다시 읽고(READ_RETRY_WAITS), 게임이 로딩 중(loading)이면 LOADING_MAX 초까지 기다렸다 잇는다 (_read).
+  blocked{kind} 는 사람이 게임 창을 닫아야 한다.
+- 채집은 **개수(target)** 로 담는다. 회수는 ⌈target/100⌉ 로 따라 나온다 (1회 = execute_gathering 한 번 = 최대 100개 ·
+  날개 5 — CLI 에 개수 인자가 없다). 진행·결과는 **가방 수**로 센다: 시작 전 가방(progress.bag0)과 지금 가방의 차이가
+  progress.done(+N개)이고, 가방이 bag0 + target 에 닿으면 끝난다. 가방을 못 읽으면 그 회의 회신 gained 로 메운다.
+  남은 개수가 100 보다 적은 회(넘칠 수 있는 회)는 도는 동안 3초마다 가방을 읽다가 목표에 닿으면 stop_action 으로
+  끊는다 (_gather_goal_watch — 읽기는 도는 채집을 끊지 않는다, docs/CLI.md 실측). 매 회 전에 도구(ToolOk)·무게를 확인한다.
+  1.0.9 의 회수 카드(runs)는 불러올 때 개수(runs×100)로 옮긴다.
 - 가공은 등록(execute_altering)만 하고 곧바로 다음 항목으로 넘어간다(waiting). 항목 전환 시·회차 끝에 완료분을 수령하고,
   체인이 다 끝났는데 waiting 이 남아 있으면 남은 시간만큼(5초~30분) 기다렸다 수령한다.
 - 실행 명령은 회당 정령의 날개 5개를 소모한다 (카탈로그 명시). 잔액 계산은 하지 않는다 — CLI 가 성공 응답의 cost 문장으로 알려준다.
@@ -25,6 +31,9 @@
 from __future__ import annotations
 
 import math
+import os
+import re
+import sys
 import threading
 import time
 import uuid
@@ -139,6 +148,15 @@ CARD_TYPES = ("craft", "alter", "gather", "collect", "play", "notify")
 #   play   : 차례가 오면 폴리오 엔진에 「틀어 달라」고만 하고 바로 done (큐는 음악을 기다리지 않는다 — 기다림은 「우선」이 맡는다)
 #   notify : 차례가 오면 알림(PC 밴드 토스트 · 앱 창 토스트 · 폰 토스트·진동·알림)을 내고 바로 done
 FREE_CARD_TYPES = ("play", "notify")
+# 실행 명령을 보내는 카드 — 채집 목표 도달 뒤 「다음 카드에 넘기기」는 이 종류일 때만 한다 (그 명령이 도는 채집을 갈아치운다)
+ACTION_CARD_TYPES = ("gather", "craft", "alter", "collect")
+
+
+class _Failed:
+    """호출 자체가 터졌을 때 CliResult 대신 돌려주는 실패 답."""
+
+    def __init__(self, error: str, message: str = ""):
+        self.ok, self.error, self.message, self.body = False, error, message, None
 PLAY_MODES = ("song", "resume")   # 이 곡만 · 지금 대기열 이어서. 「재생목록」은 카드가 아니라 **그룹**으로 담긴다 (_add_playlist_group)
 PLAY_MODE_LEGACY = "list"         # 예전의 「재생목록 전체」 카드 — 담을 때 그룹으로 펼치고, 저장본에 남은 것은 실행 시 list_gone
 PLAY_NOTE_CUT = "연주가 중간에 멈춤"   # 카드 진행 줄 — 폴리오에서 ■ 를 눌렀거나 다른 재생이 자리를 가져갔다 (오류가 아니다)
@@ -258,7 +276,80 @@ PRECHECK_ERRORS = {"precheck_dead", "precheck_combat", "precheck_dialog", "prech
 # not_in_field 「Auto-travel cannot be used in this place. The user must leave this place before continuing.」, 날개 안 씀.
 # 사람이 나오기 전까지 뒤 항목도 전부 같은 답이라 체인을 멈춘다 (전장은 반대로 스스로 이동하므로 경고만).
 FATAL_ERRORS = {"cli_not_found", "cli_disabled", "spawn_failed", "disconnected", "game_off", "timeout", "blocked",
-                "cli_disconnected", "internal", "not_in_field"} | PRECHECK_ERRORS
+                "cli_disconnected", "internal", "not_in_field", "loading"} | PRECHECK_ERRORS
+
+# ── 읽기 재시도 (N4) ──
+# 읽기 호출(상태 점검·가방 수·도구·무게)이 연결 계열로 실패하면 곧바로 보드를 세우지 않고 짧게 다시 읽는다.
+# 읽기는 날개가 들지 않는다. 실행 명령(execute_*)은 다시 보내지 않는다 — 날개 5 가 또 나간다.
+READ_RETRY_ERRORS = {"disconnected", "timeout", "game_off", "cli_disconnected"}
+READ_RETRY_WAITS = (3.0, 6.0)     # 재시도 전 기다림(초) — 길이가 곧 재시도 횟수
+# 게임이 로딩 중(재접속·캐릭터 선택)이면 끝날 때까지 기다린다. 이 간격으로 다시 읽고, 상한을 넘으면 보드를 세운다.
+LOADING_POLL = 5.0
+LOADING_MAX = 180.0
+# 연결 계열 오류의 멈춤 안내 — 코드는 그대로 두고 글만 바꾼다. {n} = 재시도 횟수
+CONN_STOP_KO = {
+    "disconnected": "게임과 연결이 잠깐 끊겼습니다",
+    "cli_disconnected": "게임과 연결이 잠깐 끊겼습니다",
+    "timeout": "게임이 제때 답하지 않았습니다",
+    "game_off": "게임이 꺼져 있거나 연결되지 않았습니다",
+}
+
+
+def wait_scale() -> float:
+    """재시도·로딩 대기의 배율. 데모 빠른 모드(MOBIW_DEMO_FAST=1 — 검사)에서는 기다리지 않는다."""
+    return 0.0 if os.environ.get("MOBIW_DEMO_FAST") == "1" else 1.0
+
+
+def is_loading(r) -> bool:
+    """게임이 로딩 중(재접속·캐릭터 선택)이라는 답인가. 오류 코드 loading · blocked kind=loading · 본문의 loading:true."""
+    if r is None or getattr(r, "ok", False):
+        return False
+    b = getattr(r, "body", None)
+    b = b if isinstance(b, dict) else {}
+    err = getattr(r, "error", None)
+    if err == "loading":
+        return True
+    if err == "blocked" and b.get("kind") == "loading":
+        return True
+    return b.get("loading") is True
+
+
+def conn_stop_msg(error: str, retries: int, action: bool = False, raw: str = "") -> str:
+    """연결 계열 오류로 멈출 때의 안내. 읽기는 「재시도 n회 후 멈춤」, 실행 명령은 다시 보내지 않았다는 것을 적는다."""
+    head = CONN_STOP_KO.get(error) or ERROR_KO.get(error, "") or error
+    if action:
+        tail = "실행 명령은 날개가 들어 자동으로 다시 보내지 않았습니다. 게임을 확인한 뒤 ▶ 시작"
+    else:
+        tail = f"재시도 {retries}회 후 멈춤. 게임을 확인한 뒤 ▶ 시작"
+    return f"{head} — {tail}" + (f" · 원문: {raw}" if raw and raw != error else "")
+
+
+# ── 실행 중 절전 막기 (N4) ──
+# 큐가 도는 동안 윈도가 잠들면 게임과의 연결이 끊긴다. 러너 스레드에서 SetThreadExecutionState 로
+# ES_CONTINUOUS|ES_SYSTEM_REQUIRED 를 걸고 끝날 때 ES_CONTINUOUS 로 푼다. 이 상태는 **건 스레드에 묶여**
+# 스레드가 죽으면 윈도가 스스로 푼다. 윈도가 아니거나 검사·CLI 차단 실행이면 아무것도 하지 않는다.
+ES_CONTINUOUS = 0x80000000
+ES_SYSTEM_REQUIRED = 0x00000001
+
+
+def _awake_enabled() -> bool:
+    if sys.platform != "win32":
+        return False
+    if os.environ.get("MOBIW_NO_CLI") == "1" or os.environ.get("MOBIW_NO_KEEPAWAKE") == "1":
+        return False
+    return "pytest" not in sys.modules
+
+
+def keep_awake(on: bool) -> bool:
+    """절전 막기를 켜고 끈다 → 실제로 윈도에 걸었으면 True. 실패해도 큐는 계속한다."""
+    if not _awake_enabled():
+        return False
+    try:
+        import ctypes
+        flags = (ES_CONTINUOUS | ES_SYSTEM_REQUIRED) if on else ES_CONTINUOUS
+        return bool(ctypes.windll.kernel32.SetThreadExecutionState(ctypes.c_uint(flags)))
+    except Exception:
+        return False
 
 ERROR_KO = {
     "tool_not_ok": "채집 도구가 없거나 내구도가 0 입니다 (get_gatherable_items.ToolOk=false). 도구를 고치거나 바꾼 뒤 다시 시작하세요.",
@@ -286,14 +377,17 @@ ERROR_KO = {
     "no_altering": "가공 대기열이 비어 있습니다.",
     "duplicate": "같은 시설의 수령 항목이 이미 큐에 있습니다.",
     "canceled": "다른 명령이 들어와 행동이 취소됐습니다.",
-    "timeout": "응답이 없어 행동이 중단됐습니다.",
+    "timeout": "게임이 제때 답하지 않아 행동이 중단됐습니다.",
     "max_passes": "안전 상한(설정 queue_max_passes)에 닿았습니다.",
     "not_gatherable": "지금 채집 가능 목록에 없는 항목입니다 (생활 레벨 부족이면 목록에 안 보입니다).",
     "not_in_cache": "그 레시피가 캐시에 없습니다. 갱신해 보세요.",
     "cli_disconnected": "게임에 연결되지 않았습니다.",
     "cli_disabled": "CLI 실행이 차단된 실행입니다 (MOBIW_NO_CLI=1).",
     "cli_not_found": "MabinogiMobile_CLI.exe 를 찾지 못했습니다.",
-    "disconnected": "게임 파이프가 끊겼습니다.",
+    "disconnected": "게임과 연결이 끊겼습니다 (파이프 끊김).",
+    "game_off": "게임이 꺼져 있거나 연결되지 않았습니다.",
+    "loading": f"게임이 로딩 중입니다(재접속·캐릭터 선택) — {int(LOADING_MAX // 60)}분을 기다려도 끝나지 않아 멈췄습니다. "
+               "게임에 들어간 뒤 ▶ 시작",
     "precheck_dead": "캐릭터가 사망/부활 대기 상태로 보고됩니다 (get_activity). 게임에서 부활을 선택한 뒤 다시 시작하세요.",
     "precheck_combat": "캐릭터가 전투 중으로 보고됩니다 (get_activity). 전투가 끝난 뒤 다시 시작하세요.",
     "precheck_dialog": "대화 선택을 기다리는 상태로 보고됩니다 (get_activity). 게임에서 대화를 끝낸 뒤 다시 시작하세요.",
@@ -341,7 +435,7 @@ ERROR_SHORT = {
     "not_available": "지금 불가", "insufficient_facility_level": "시설 레벨 부족",
     "insufficient_decor_score": "장식 점수 부족", "ingredient_locked": "재료 잠김",
     "facility_not_found": "시설 없음", "component_not_found": "부품 없음", "cli_error": "호출 실패",
-    "wing_cap": "날개 상한", "wing_waste": "날개 헛소모",
+    "wing_cap": "날개 상한", "wing_waste": "날개 헛소모", "loading": "게임 로딩 중",
 }
 
 
@@ -564,7 +658,7 @@ def max_suggested(r: dict, snap: dict) -> dict:
 
 # 수량 상한 — add·update 가 **같은 검증**을 쓴다. add 에만 없으면 사용자가 보낸 값이 그대로 저장돼
 # 확인창 수치와 게임에 전달되는 craftCount 가 검증 없이 커진다.
-TARGET_MAX = 99_999   # 채집 목표 개수
+TARGET_MAX = 99_999   # 채집 개수(target)
 COUNT_MAX = 999       # 제작·가공 횟수
 
 
@@ -576,14 +670,34 @@ def check_count(count: int) -> dict | None:
 
 
 def check_gather(target: int, max_passes: int) -> tuple:
-    """채집 개수 검증. (오류 dict | None, plan | None)."""
+    """채집 개수 검증. (오류 dict | None, plan | None). plan = {passesPlanned: ⌈target/100⌉, need: target}."""
     if not 1 <= target <= TARGET_MAX:
-        return {"ok": False, "error": "bad_request", "message": f"target 은 1~{TARGET_MAX:,} 사이여야 합니다."}, None
+        return {"ok": False, "error": "bad_request", "message": f"채집 개수는 1~{TARGET_MAX:,} 사이여야 합니다."}, None
     plan = gather_plan(target)
     if plan["passesPlanned"] > max_passes:
         return {"ok": False, "error": "max_passes",
                 "message": f"예상 {plan['passesPlanned']}회가 안전 상한({max_passes}회)을 넘습니다. 개수를 나누세요."}, None
     return None, plan
+
+
+def gather_runs(it: dict) -> int:
+    """채집 카드의 예상 회수 = ⌈target/100⌉ (최소 1). 회수는 개수에서 따라 나오는 값이다 — 카드에 따로 적지 않는다."""
+    t = _n(it.get("target")) if isinstance(it, dict) else 0
+    return max(1, math.ceil(t / MAX_PER_PASS)) if t > 0 else 1
+
+
+def target_from_request(d: dict):
+    """요청(add item · update patch)에서 채집 개수를 읽는다 → int, 없으면 None.
+    target(개수)이 먼저다. 1.0.9 화면은 회수를 runs(담기)·count(고치기)로 보냈다 — 그 값은 ×100 개로 읽는다
+    (그 화면에서 1회 = 최대 100개였다). 범위를 넘는 값은 그대로 돌려 검증이 거절하게 한다."""
+    if not isinstance(d, dict):
+        return None
+    if d.get("target") is not None:
+        return _n(d.get("target"))
+    for k in ("runs", "count"):
+        if d.get(k) is not None:
+            return _n(d.get(k)) * MAX_PER_PASS
+    return None
 
 
 def alter_mode(collect) -> str:
@@ -600,8 +714,8 @@ def alter_passes(count: int, collect) -> int:
 
 
 def gather_plan(target: int) -> dict:
-    """target 은 **이번에 캘 개수**다 (보유량을 채우는 목표가 아니다 — 보유는 빼지 않는다).
-    CLI 는 호출 한 번에 최대 MAX_PER_PASS 개를 캐고 멈추므로 회수는 그 단순 나눗셈이다."""
+    """target 은 **이번에 캘 개수**다 (보유량을 채우는 목표가 아니다 — 시작 전 가방 + target 에 닿으면 끝난다).
+    CLI 는 호출 한 번에 최대 MAX_PER_PASS 개를 캐고 멈추므로 예상 회수는 그 단순 나눗셈이다."""
     need = max(0, target)
     return {"passesPlanned": math.ceil(need / MAX_PER_PASS) if need else 0, "need": need}
 
@@ -771,6 +885,9 @@ class Queue:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._executing = False   # 실행 명령(execute_*)이 파이프를 잡고 있는 중 — 정지 시 stop_action 을 보낼지 판단
+        self._exec_n = 0          # 도는 실행 명령 수 — 넘겨준 채집(_orphan)과 다음 카드의 명령이 겹칠 수 있다
+        self._exec_lock = threading.Lock()
+        self._orphan: dict | None = None   # 목표에 닿아 다음 카드에 넘긴 채집 호출 {fin, it, thread} (_gather_watched)
         self._yielded = False     # 연주 쪽에 「양보」를 부탁한 상태 — 보드가 끝나면 **그 부탁을 거둔다** (이어서 틀지 않는다)
         self._yield_held = False  # 양보를 **받았다** — 그쪽이 경계에서 멈춰 서 있다. 항목마다 다시 부탁하지 않는다
         self.hold: dict | None = None      # 연주 대기 중이면 그 카드 (GET /api/queue 의 hold) — 저장하지 않는다
@@ -805,6 +922,7 @@ class Queue:
         # 수량은 add/update 와 **같은 상한**으로 자른다. 파일이 count=5000 을 들고 오면 러너는 그대로 믿고
         # 그만큼 등록했고, `start` 의 상한 검사는 저장된 passesPlanned(=1) 만 봐서 막지 못했다.
         if it["type"] == "gather":
+            self._runs_to_target(it)
             it["target"] = max(1, min(TARGET_MAX, _n(it.get("target"), 1)))
         elif it["type"] in ("craft", "alter"):
             it["count"] = max(1, min(COUNT_MAX, _n(it.get("count"), 1)))
@@ -817,7 +935,7 @@ class Queue:
         for k in ("done", "passes", "totalDone", "have"):
             p[k] = max(0, _n(p.get(k)))
         # passesPlanned 는 **저장된 값을 믿지 않고 늘 다시 센다** — 수량에서 바로 나오는 값이라 잃을 것이 없다
-        p["passesPlanned"] = (gather_plan(it["target"])["passesPlanned"] if it["type"] == "gather"
+        p["passesPlanned"] = (gather_runs(it) if it["type"] == "gather"
                               else alter_passes(it["count"], it.get("collect")) if it["type"] == "alter"
                               else 0 if it["type"] in FREE_CARD_TYPES else 1)   # 연주·알림은 호출이 없다
         if it["type"] == "play":
@@ -844,8 +962,34 @@ class Queue:
             if new != old:
                 it["target"] = new
                 it["log"].append({"t": time.time(), "msg": f"의미 변경으로 보정: 목표 {old}개 → {new}개 캐기"})
-            it["progress"]["passesPlanned"] = gather_plan(_n(it["target"]))["passesPlanned"]
+            it["progress"]["passesPlanned"] = gather_runs(it)
         return it
+
+    # 1.0.9 의 회수 카드가 불러올 때 남긴 줄 — 「개수 → 회수로 바뀜: 250개 → 3회」. 이 줄이 있으면 그 개수로 되돌린다
+    _RUNS_LOG = re.compile(r"개수 → 회수로 바뀜: (\d+)개 → (\d+)회")
+
+    def _runs_to_target(self, it: dict) -> None:
+        """1.0.9 의 회수 카드(runs) → 개수(target). 한 번만 (runs 칸을 지운다).
+
+        1.0.9 는 채집을 회수로 담았고 target 에는 runs×100 을 적었다. 이제 개수가 기준이라 target = runs×100 으로 둔다.
+        그 전(1.0.7)에 개수로 담았던 카드를 1.0.9 가 회수로 바꾼 것이면 로그에 원래 개수가 남아 있다 — 그 값으로 되돌린다."""
+        if "runs" not in it:
+            return
+        runs = _n(it.pop("runs"))
+        if runs < 1:
+            return
+        target = runs * MAX_PER_PASS
+        for row in reversed(it.get("log") if isinstance(it.get("log"), list) else []):
+            m = self._RUNS_LOG.search(str((row or {}).get("msg") or "")) if isinstance(row, dict) else None
+            if m and _n(m.group(2)) == runs and 1 <= _n(m.group(1)) <= target:
+                target = _n(m.group(1))
+                break
+        it["target"] = min(TARGET_MAX, target)
+        it["targetMigrated"] = True   # 1.0.7 의 「목표 보유량」 보정은 이미 지난 카드다
+        if not isinstance(it.get("log"), list):
+            it["log"] = []
+        it["log"].append({"t": time.time(), "msg": f"회수 → 개수로 바뀜: {runs}회 → {it['target']}개 "
+                                                   f"(가방이 그만큼 늘면 멈춥니다)"})
 
     def _load(self) -> None:
         d = store.load(FILE, {})
@@ -1214,7 +1358,8 @@ class Queue:
             if err:
                 return err
             if typ == "gather":
-                target = _n(item.get("target"))
+                # 개수(target). 1.0.9 화면이 보내는 회수(runs)는 ×100 개로 읽는다 (target_from_request)
+                target = _n(target_from_request(item))
                 g = next((x for x in snap.get("gather", []) if x["name"] == name), None)
                 if not g:
                     return {"ok": False, "error": "not_gatherable", "message": ERROR_KO["not_gatherable"]}
@@ -1229,7 +1374,7 @@ class Queue:
                 err, plan = check_gather(total, max_passes)   # 합치고 나서 상한을 넘으면 안 된다
                 if err:
                     return err
-                plan = {**plan, "have": have}   # 보유는 화면 표시용으로만 실어 준다 (회수 계산에는 안 쓴다)
+                plan = {**plan, "have": have}   # 가방 수는 화면 표시용 (「가방 230 → 목표 480」)
                 if prev:
                     prev["target"] = total
                     p = prev.setdefault("progress", {})
@@ -1461,7 +1606,7 @@ class Queue:
                   group: str | None = None, collect: str | None = None) -> dict:
         """선행 제작까지 담기: 목표 레시피 rid 를 count 회 만들기 위한 부족 재료를 재귀적으로 해결하는 항목들을
         **선행 → 목표 순서**로 큐에 담는다. 보유는 가방+창고 합산. source_fn(재료명) → ("gather"|"craft"|"alter"|None, 레시피키).
-        - 채집: target = 지금 보유 + 부족분 (mode "max" 면 부족분을 100 단위로 올림)
+        - 채집: target = 부족분 (mode "max" 면 부족분을 100 단위로 올림)
         - 제작/가공: ⌈부족/1회 산출⌉ 회, 그 레시피의 재료도 같은 규칙으로 재귀 (깊이 최대 max_depth, 같은 경로 재방문 = 순환 → 중단·경고)
         - 같은 재료·레시피가 여러 갈래에서 필요하면 수량을 합쳐 한 항목. 공급 경로가 없으면 unresolved.
         dry_run 이면 담지 않고 계산만.
@@ -1545,7 +1690,7 @@ class Queue:
                 added.append(spec)
                 continue
             # merge=False: 체인은 이미 안에서 같은 재료·레시피를 합쳐 놓았다(gathers·crafts). 밖에 있던 항목과
-            # 또 합치면 이 체인이 세운 계획이 흐트러지므로 별도 항목으로 담는다. target 은 이제 「캘 개수」라
+            # 또 합치면 이 체인이 세운 계획이 흐트러지므로 별도 항목으로 담는다. target 은 「캘 개수」라
             # 체인을 두 번 돌리면 두 몫이 각각 남는데, 그게 맞다 — 두 레시피가 각자 필요로 하는 양이다.
             res = self.add(spec, snap, merge=False, group=group)
             if res.get("ok"):
@@ -1581,8 +1726,8 @@ class Queue:
                     it["count"] = _n(c)
                     changed.append(f"연주 {it['count']}회")
             elif it["type"] == "gather":
-                if "target" in patch:
-                    target = _n(patch.get("target"))
+                target = target_from_request(patch)   # target(개수) · 1.0.9 화면의 count(회수 → ×100)
+                if target is not None:
                     err, plan = check_gather(target, max_passes)   # add 와 같은 검증
                     if err:
                         return err
@@ -1973,11 +2118,12 @@ class Queue:
             # 화면은 이미 `p.passesPlanned || gpass(target)` 로 메우고 있었다 —
             # **같은 값을 두 곳이 다르게 세면 반드시 어긋난다.** 규칙을 서버에 맞춘다.
             n = _n(p.get("passesPlanned")) or gather_plan(_n(it.get("target")))["passesPlanned"]
-            acts += [{"command": "get_gatherable_items", "text": "매 회 전: 도구 상태 확인"},
+            acts += [{"command": "get_items", "text": "시작 전: 가방 수 읽기 (가방이 시작 + 개수에 닿으면 끝)"},
+                     {"command": "get_gatherable_items", "text": "매 회 전: 도구 상태 확인"},
                      {"command": "get_inventory", "text": "매 회 전: 무게 확인"},
                      {"command": "execute_gathering",
-                      "text": f"「{it['name']}」 {_n(it.get('target')):,}개 캐기 (회당 최대 {MAX_PER_PASS}개) × 예상 {n}회"},
-                     {"command": "get_items", "text": "매 회 후: 가방 보유 다시 읽기"}]
+                      "text": f"「{it['name']}」 {_n(it.get('target')):,}개 캐기 (1회 최대 {MAX_PER_PASS}개 · 날개 {WINGS_PER_CALL}개) × 예상 {n}회"},
+                     {"command": "get_items", "text": "마지막 회: 3초마다 가방 수 읽기 → 목표에 닿으면 stop_action"}]
             calls = wings = n
         elif it["type"] in FREE_CARD_TYPES:
             # 연주·알림 — CLI 호출 0 · 날개 0. 확인창은 날개 칸에 「—」 를 적는다
@@ -2121,13 +2267,21 @@ class Queue:
                             + ([f"안전 상한({max_passes}회)을 넘는 항목: " + ", ".join(r["name"] for r in over)] if over else [])
                             + ([("오류가 난 항목은 건너뛰고 다음으로 갑니다. 연결 끊김·blocked 는 체인을 멈춥니다."
                                  if self.config["onError"] == "continue" else "오류가 나면 그 항목에서 체인을 멈춥니다.")
-                                + " 자동 재시도는 없습니다."])}
+                                + " 자동 재시도는 없습니다 (연결이 잠깐 끊긴 읽기만 두 번 더 읽습니다 — 실행 명령은 다시 보내지 않습니다)."])}
 
     # ── 실행 ──
     def start(self, settings: dict, override_breaker: bool = False) -> dict:
         """override_breaker — 날개 차단기가 막아도 **사람이 확인하고** 시작한다 (강제 시작까지 막지는 않고
         한 번 더 묻는다). 그때는 차단기 창을 비워 새로 센다 —
         안 비우면 시작하자마자 같은 기록으로 다시 멈춘다."""
+        with self.lock:
+            if self._closing:
+                return {"ok": False, "error": "closing", "message": "앱을 끝내는 중입니다."}
+            if self.running:
+                return {"ok": False, "error": "busy", "message": "이미 실행 중입니다."}
+        # 게임 연결 확인(status, 날개 0)은 **잠금 밖에서** — 끊겨 있으면 짧게 다시 본다(READ_RETRY_WAITS).
+        # 잠금을 쥔 채 기다리면 그동안 화면의 상태 조회가 전부 막힌다.
+        pre_probe = self._probe_retry() if self.probe else None
         with self.lock:
             if self._closing:   # 종료가 러너를 세운 뒤 새 러너가 뜨면 os._exit 가 CLI 명령 도중에 프로세스를 죽인다
                 return {"ok": False, "error": "closing", "message": "앱을 끝내는 중입니다."}
@@ -2168,10 +2322,11 @@ class Queue:
                         self._wing_log.clear()
                     self._event("breaker", "", f"날개 차단기를 사람이 확인하고 시작 ({refused.get('error')}) — 차단기 창을 새로 셉니다")
             if self.probe:
-                pr = self.probe()
+                pr, tries = pre_probe
                 if pr.get("pipe") != "connected":
                     return {"ok": False, "error": "cli_disconnected",
-                            "message": ERROR_KO["cli_disconnected"] + (f" ({pr.get('reason')})" if pr.get("reason") else "")}
+                            "message": ERROR_KO["cli_disconnected"] + (f" ({pr.get('reason')})" if pr.get("reason") else "")
+                            + (f" — {tries}회 다시 확인했습니다" if tries else "")}
             hold = self._music_start_gate(settings)   # 연주 중이면 거절이 아니라 **연주 대기** — 러너가 첫 카드 앞에서 기다린다
             self._stop.clear()
             self._removed.clear()
@@ -2187,6 +2342,26 @@ class Queue:
             self._thread = threading.Thread(target=self._run, args=(dict(settings),), daemon=True, name="queue-runner")
             self._thread.start()
             return {"ok": True, "hold": True} if hold else {"ok": True}
+
+    def _probe_retry(self) -> tuple:
+        """게임 연결 확인(status) → (답, 다시 본 횟수). 끊겨 있으면 READ_RETRY_WAITS 만큼 쉬고 다시 본다.
+        CLI 가 꺼져 있거나 막힌 실행(disabled·exe 없음)은 다시 봐도 같으므로 한 번만 본다."""
+        try:
+            pr = self.probe() or {}
+        except Exception as e:
+            return {"pipe": None, "reason": f"{type(e).__name__}"}, 0
+        tries = 0
+        while (pr.get("pipe") not in ("connected", "disabled") and pr.get("found", True) is not False
+               and tries < len(READ_RETRY_WAITS)):
+            w = READ_RETRY_WAITS[tries]
+            tries += 1
+            self.say(f"[queue] 게임 연결 확인 실패({pr.get('pipe')}/{pr.get('reason')}) — {w:g}초 뒤 다시 ({tries}/{len(READ_RETRY_WAITS)})")
+            time.sleep(w * wait_scale())
+            try:
+                pr = self.probe() or {}
+            except Exception as e:
+                pr = {"pipe": None, "reason": f"{type(e).__name__}"}
+        return pr, tries
 
     def _music_start_gate(self, settings: dict):
         """「완전한 연주 우선」(music)인데 지금 연주 중인가 → 그 연주(perf_of 결과), 아니면 None.
@@ -2355,7 +2530,8 @@ class Queue:
         p.pop("collectRetry", None); p.pop("collectRetryAt", None)   # 「수령분 없음」 재시도 횟수는 회차 단위
         p["have"] = bag_count(it["name"])
         if it["type"] == "gather":
-            p["passesPlanned"] = gather_plan(_n(it.get("target")))["passesPlanned"]
+            p["passesPlanned"] = gather_runs(it)
+            p.pop("bag0", None)   # 회차마다 새로 센다 — 첫 회 전 가방을 다시 읽는다
         elif it["type"] == "alter":
             p["passesPlanned"] = alter_passes(_n(it.get("count"), 1), it.get("collect"))
 
@@ -2365,6 +2541,9 @@ class Queue:
         위치(index)가 아니라 **id 로 고른다** — 실행 중에도 사용자가 항목을 빼거나 순서를 바꿀 수 있어서,
         위치 커서를 쓰면 리스트가 밀리며 아직 실행 안 한 항목이 조용히 건너뛰어진다.
         seen 은 이미 집어 든 항목 — 사용자가 도중에 「재시도」로 pending 을 만들어도 무한 반복하지 않게."""
+        awake = keep_awake(True)   # 도는 동안 윈도 절전 막기 (이 스레드에 묶인다 — finally 에서 푼다)
+        if awake:
+            self.say("[queue] 실행 중 절전 막기 켬")
         try:
             first = self._hold_first
             self._hold_first = None
@@ -2396,6 +2575,10 @@ class Queue:
             if not self._stop.is_set() and self.stop_reason is None:
                 self._wait_pending_alters(settings)   # 체인이 다 끝났는데 가공이 남아 있으면 기다렸다 수령
         finally:
+            try:
+                self._settle_orphan()          # 넘겨준 채집이 아직 돌면 stop_action 을 다시 보내 본다
+            except Exception as e:
+                self.say(f"[queue] 넘겨준 채집 정리 실패: {type(e).__name__}: {e}")
             with self.lock:
                 self.running = False
                 self.current = None
@@ -2420,6 +2603,9 @@ class Queue:
             # **양보를 부탁했으면 그 부탁을 거둔다** — 잠금 밖에서. 거두지 않으면 폴리오에 「경계에서 멈춰 선」
             # 표시가 남아 나중에 다시 틀 수 있다. **이어서 틀지는 않는다** — 작업이 끝났다고 연주를 다시 트는 것은
             # 버그였다. 사용자 정지로 끝났어도 같다.
+            if awake:
+                keep_awake(False)
+                self.say("[queue] 절전 막기 풂")
             self._release_performance()
             try:
                 self._finish_notify(settings)   # 큐 종료 알림 (설정 queue_done_notify · 사용자 정지 제외) — 알림 탓에 정리가 죽지 않게
@@ -2623,7 +2809,9 @@ class Queue:
             # 값 자체가 아니라 **시작점에서 얼마나 늘었는가**만 쓴다. 의뢰가 갱신되면
             # 숫자가 되레 줄어드는데, 그때는 **모른다로 돌아간다** — 지어내지 않는다.
             pr = questwatch.progress(g["row"]) if g.get("row") else None
-            if pr is None or gave_up:
+            if it.get("progress", {}).get("liveSrc") == "bag":
+                pass                               # 가방 지킴이(_gather_goal_watch)가 진짜 수를 적고 있다
+            elif pr is None or gave_up:
                 it.get("progress", {}).pop("live", None)
             elif base is None:
                 base = pr[0]                       # 이 회차의 출발점
@@ -2719,21 +2907,37 @@ class Queue:
                 self._log(it, f"퀘스트가 {int(self.QUEST_WAIT_CEIL)}초 동안 끝나지 않았습니다 — 기다리기를 그만둡니다")
                 return False
 
-    def _bag_gain(self, it: dict, p: dict) -> int:
-        """가방을 다시 세어 **이번에 얼마나 늘었는지** → 개수.
-
-        회신이 안 왔으니 `gained` 가 없다. **지어내지 않고 가방으로 센다.**
-        못 읽으면 0 — 모르는 것을 0 이라고 적는 것이 아니라, **0 을 더한다**는 뜻이다
-        (없는 획득을 지어내는 쪽보다 안전하다)."""
-        r = self.cli("get_items", None, READ_TIMEOUT)
+    def _bag_now(self, it: dict):
+        """가방 수(가방+창고 합산)를 읽는다 → int, 못 읽으면 None. 연결 계열은 짧게 다시 읽는다 (_read)."""
+        r = self._read(it, "get_items", None)
         if not r.ok:
-            self._log(it, f"가방을 못 읽었습니다({r.error}) — 이번 회차 획득을 0 으로 둡니다")
-            return 0
+            return None
         store.set_cache("items", r.body)
-        now = _n(work.stock(r.body)["total"].get(it["name"]))
-        got = max(0, now - _n(p.get("have")))
+        return _n(work.stock(r.body)["total"].get(it["name"]))
+
+    def _bag_count(self, it: dict, p: dict, reply_gained: int = 0, read: bool = True) -> int:
+        """한 회가 끝난 뒤 가방으로 센다 → **이번 회에 늘어난 수**.
+
+        progress.done = 지금 가방 − 첫 회 전 가방(bag0) — 카드의 「+N개」.
+        가방을 못 읽으면(또는 read=False — 연결이 끊겨 읽어도 소용없을 때) 회신 gained 로 메운다 (지어내지 않는다 — 회신이 준 값이다)."""
+        before = _n(p.get("have"))
+        now = self._bag_now(it) if read else None
+        if now is None:
+            if read:
+                self._log(it, f"가방을 못 읽었습니다 — 이번 회는 회신 획득 {reply_gained}개로 셉니다")
+            p["have"] = before + max(0, reply_gained)
+            p["done"] = _n(p.get("done")) + max(0, reply_gained)
+            return max(0, reply_gained)
+        if p.get("bag0") is None:
+            p["bag0"] = before - _n(p.get("done"))
         p["have"] = now
-        return got
+        p["done"] = max(0, now - _n(p.get("bag0")))
+        return now - before
+
+    def _bag_gain(self, it: dict, p: dict) -> int:
+        """가방을 다시 세어 **이번에 얼마나 늘었는지** → 개수 (퀘스트 지킴이가 회신 없이 끝을 본 경우).
+        못 읽으면 0 을 더한다 — 없는 획득을 지어내는 쪽보다 안전하다."""
+        return max(0, self._bag_count(it, p, 0))
 
     def _exec(self, command: str, body, it: dict):
         """실행 명령 호출 — 정지 시 stop_action 을 보낼 수 있게 플래그를 켠다.
@@ -2764,11 +2968,15 @@ class Queue:
         return r
 
     def _exec_once(self, command: str, body, it: dict):
-        self._executing = True
+        with self._exec_lock:
+            self._exec_n += 1
+            self._executing = True
         try:
-            r = self.cli(command, body, EXEC_TIMEOUT)
+            r = self._call(command, body, EXEC_TIMEOUT)
         finally:
-            self._executing = False
+            with self._exec_lock:
+                self._exec_n = max(0, self._exec_n - 1)
+                self._executing = self._exec_n > 0
         try:
             self._ledger(command, it, r)
         except Exception:
@@ -3114,7 +3322,7 @@ class Queue:
         p = perf0
         if p is None:
             try:
-                r = self.cli("get_activity", "", READ_TIMEOUT)
+                r = self._call("get_activity", "", READ_TIMEOUT)
                 p = perf_of(r.body) if r.ok else None
             except Exception:
                 p = None
@@ -3216,7 +3424,7 @@ class Queue:
     def _stop_performance(self, it: dict, what: str) -> bool:
         """연주를 멈추고 진행한다. **여기 오기 전에 「멈춰도 되는가」가 이미 확인돼 있어야 한다.**"""
         self._log(it, f"연주 중({what}) — 연주를 멈추고 진행합니다")
-        r = self.cli("stop_action", "", READ_TIMEOUT)
+        r = self._call("stop_action", "", READ_TIMEOUT)
         # **「멈출 게 없다」는 실패가 아니다.** 조회와 정지 사이에 곡이 끝났을 수 있다.
         # (`invalid_state` 는 카탈로그의 stop_action 오류 목록에 없다 — 목록이 전수가
         #  아님이 이미 드러났고, 여기가 바로 그 자리다.)
@@ -3258,13 +3466,71 @@ class Queue:
         return g if isinstance(g, dict) else None
 
     def _read_activity(self, it: dict):
-        """조회 한 번 → activity_summary. 연결 오류면 그 항목을 끝내고 None 을 준다.
+        """조회 → activity_summary. 연결 계열이면 짧게 다시 읽고(_read), 그래도 안 되면 그 항목을 끝내고 None 을 준다.
         **값이 안 드는 호출이다** — 읽기는 도는 동작을 갈아치우지 않는다."""
-        r = self.cli("get_activity", "", READ_TIMEOUT)
+        r = self._read(it, "get_activity", "")
         if not r.ok:
-            self._fail(it, r.error or "cli_error", r.message or "get_activity 실패")
+            self._read_failed(it, r, "get_activity 실패")
             return None
         return activity_summary(r.body)
+
+    def _nap(self, sec: float) -> bool:
+        """기다린다 — ■ 정지가 들어오면 곧바로 깬다. 정지로 깼으면 True."""
+        return self._stop.wait(max(0.0, float(sec)) * wait_scale())
+
+    def _read(self, it, command: str, body):
+        """읽기 호출(날개 0) — 연결 계열 실패는 READ_RETRY_WAITS 만큼 다시 읽고, 로딩 중이면 기다린다.
+
+        · disconnected·timeout·game_off·cli_disconnected → 3초, 6초 쉬고 다시 (기본 2회). 그래도 안 되면 마지막 답을 준다.
+        · loading(재접속·캐릭터 선택) → LOADING_POLL 초마다 다시 읽는다. LOADING_MAX 초를 넘으면 오류 loading 으로 준다.
+        · ■ 정지가 들어오면 기다리지 않고 마지막 답을 준다.
+        실행 명령(execute_*)에는 쓰지 않는다 — 다시 보내면 날개가 또 나간다.
+        마지막 답에 `retries`(다시 읽은 횟수)를 달아 준다 — 멈춤 안내가 「재시도 n회 후 멈춤」을 적는다."""
+        r = self._call(command, body, READ_TIMEOUT)
+        tries = 0
+        polls = 0
+        max_polls = max(1, int(math.ceil(LOADING_MAX / max(0.1, LOADING_POLL))))
+        while not r.ok and not self._stop.is_set():
+            if is_loading(r):
+                if polls >= max_polls:
+                    r.error = "loading"
+                    r.message = ERROR_KO["loading"]
+                    break
+                if polls == 0 and it is not None:
+                    self._log(it, f"게임이 로딩 중입니다(재접속·캐릭터 선택) — {LOADING_POLL:g}초마다 다시 보고 "
+                                  f"최대 {int(LOADING_MAX // 60)}분 기다립니다 ({command})")
+                polls += 1
+                if self._nap(LOADING_POLL):
+                    break
+                r = self._call(command, body, READ_TIMEOUT)
+                if r.ok and it is not None:
+                    self._log(it, f"로딩이 끝났습니다 — 이어갑니다 ({polls * LOADING_POLL:g}초 기다림)")
+                continue
+            if r.error in READ_RETRY_ERRORS and tries < len(READ_RETRY_WAITS):
+                w = READ_RETRY_WAITS[tries]
+                tries += 1
+                if it is not None:
+                    self._log(it, f"{command} 읽기 실패({r.error}) — {w:g}초 뒤 다시 읽습니다 ({tries}/{len(READ_RETRY_WAITS)})")
+                if self._nap(w):
+                    break
+                r = self._call(command, body, READ_TIMEOUT)
+                if r.ok and it is not None:
+                    self._log(it, f"{command} 다시 읽기 성공 ({tries}회째)")
+                continue
+            break
+        try:
+            r.retries = tries
+        except Exception:
+            pass
+        return r
+
+    def _read_failed(self, it: dict, r, fallback: str = "") -> None:
+        """읽기가 끝내 실패했을 때 그 항목을 끝낸다. 연결 계열은 「재시도 n회 후 멈춤」 안내로 (코드는 그대로)."""
+        err = r.error or "cli_error"
+        if err in READ_RETRY_ERRORS:
+            self._fail(it, err, conn_stop_msg(err, getattr(r, "retries", 0), raw=r.message or ""))
+        else:
+            self._fail(it, err, r.message or ERROR_KO.get(err, "") or fallback)
 
     def _run_item(self, it: dict, settings: dict, wait_alter: bool = False) -> None:
         try:
@@ -3301,6 +3567,13 @@ class Queue:
         if r.error == "invalid_count" and body.get("maxCount") is not None:
             extra = f" (시설 상한 maxCount={body.get('maxCount')})"
         msg = r.message or ERROR_KO.get(r.error or "", "")
+        if r.error in READ_RETRY_ERRORS:
+            # 실행 명령은 다시 보내지 않는다 (날개 5) — 그 사실을 안내에 적는다. 코드는 그대로
+            msg = conn_stop_msg(r.error, 0, action=True, raw=r.message or "")
+        elif is_loading(r):
+            msg = "게임이 로딩 중이라(재접속·캐릭터 선택) 실행 명령이 거절됐습니다 — 게임에 들어간 뒤 ▶ 시작" + (
+                f" · 원문: {r.message}" if r.message else "")
+            r.error = "loading"
         kind_ko = BLOCKED_KIND_KO.get(body.get("kind")) if r.error == "blocked" else None
         if kind_ko:
             # 우리 안내를 앞에 — 원문(영문)은 뒤에 남겨 둔다 (무엇이 왔는지 지우지 않는다)
@@ -3509,55 +3782,125 @@ class Queue:
         self._push_notice(f"큐가 끝났습니다 — 완료 {done} · 실패 {fail}", True, "done")
 
     def _run_gather(self, it: dict, settings: dict) -> None:
+        """채집 target 개. 1회 = execute_gathering 한 번 (최대 100개 · 날개 5 — 개수 인자가 없다).
+
+        진행·결과는 **가방 수**로 센다: 시작 전 가방(bag0)을 읽고, 매 회 뒤 다시 읽는다. done = 지금 가방 − bag0.
+        가방이 bag0 + target 에 닿으면 끝낸다 — 매 회 전에 보고, 닿았으면 다음 회를 부르지 않는다.
+        남은 개수가 100 보다 적은 회는 넘칠 수 있다 → 도는 동안 가방을 읽다가 목표에 닿으면 끊는다 (_gather_watched)."""
         p = it["progress"]
         target = _n(it.get("target"))
         margin = max(0, _n(settings.get("queue_weight_margin"), 30))   # 음수 여유는 「무게 검사 없음」이 된다
         max_passes = _n(settings.get("queue_max_passes"), 50)
-        idle = 0   # 연속으로 한 개도 못 캔 회차 수 — 목표에 영영 못 닿는 상황을 max_passes 까지 안 기다리고 끊는다
+        idle = 0   # 연속으로 한 개도 못 캔 회 수 — 소모품이 떨어졌거나 채집지가 비었으면 남은 회를 태우지 않고 끊는다
+
+        def plan_left() -> None:
+            # 예상 회수 = 지나간 회 + ⌈남은 개수/100⌉ — 한 회에 100개보다 적게 들면 늘어난다
+            left = max(0, target - _n(p.get("done")))
+            p["passesPlanned"] = _n(p.get("passes")) + (math.ceil(left / MAX_PER_PASS) if left else 0)
+
+        def where() -> str:
+            return f"{p['passes']}/{p['passesPlanned']}회 · +{p['done']}/{target}개"
+
+        def bag_line() -> str:
+            return (f"가방 {_n(p.get('bag0'))} → {p['have']}" if p.get("bag0") is not None else f"가방 {p['have']}")
+
+        # 시작 전 가방 — 이어서 도는 카드(멈췄다 다시 시작)는 이미 센 몫(done)을 빼서 기준을 맞춘다
+        if p.get("bag0") is None or not p.get("passes"):
+            now = self._bag_now(it)
+            if now is not None:
+                p["have"] = now
+                p["bag0"] = now - (_n(p.get("done")) if p.get("passes") else 0)
+                if not p.get("passes"):
+                    p["done"] = 0
+                plan_left()
+                self._log(it, f"시작 전 가방 {now}개 — 목표 가방 {p['bag0'] + target}개 "
+                              f"(+{target}개 · 예상 {p['passesPlanned']}회 · 날개 {p['passesPlanned'] * WINGS_PER_CALL})")
+            elif self._stop.is_set():
+                pass
+            else:
+                self._log(it, "시작 전 가방을 못 읽었습니다 — 이번에는 회신 획득으로 셉니다 (도중에 끊지 않습니다)")
         while True:
             if self._stopped(it):
                 return
-            # 완료 판정은 **이번에 캔 개수**(gained 누적)로 한다. 가방 보유는 표시용일 뿐 — 보유로 재면
-            # 이미 갖고 있던 만큼 덜 캐게 된다(필요 35·보유 5 → 30만 캐고 끝나 5개 모자람).
+            plan_left()
             if p["done"] >= target:
-                self._done(it, f"{p['done']}/{target}개 캐기 완료 ({p['passes']}회, 가방 {p['have']})"); return
+                self._done(it, f"{p['done']}/{target}개 캐기 완료 ({p['passes']}회, {bag_line()})"); return
             if p["passes"] >= max_passes:
                 self._fail(it, "max_passes"); return
             # 매 회 전: 도구
-            g = self.cli("get_gatherable_items", it["name"], READ_TIMEOUT)
+            g = self._read(it, "get_gatherable_items", it["name"])
             if not g.ok:
-                self._fail(it, g.error or "cli_error", g.message); return
+                if self._stopped(it):
+                    return
+                self._read_failed(it, g); return
             row = next((x for x in work.gatherables(g.body) if x["name"] == it["name"]), None)
             if row is None:
                 self._fail(it, "not_gatherable"); return
             if not row["toolOk"]:
                 self._fail(it, "tool_not_ok"); return
             # 매 회 전: 무게
-            inv = self.cli("get_inventory", "", READ_TIMEOUT)
+            inv = self._read(it, "get_inventory", "")
             if not inv.ok:
-                self._fail(it, inv.error or "cli_error", inv.message); return
+                if self._stopped(it):
+                    return
+                self._read_failed(it, inv); return
             b = inv.body if isinstance(inv.body, dict) else {}
             cur = float(b.get("CurrentInventoryWeightAsDecimal") or b.get("CurrentInventoryWeight") or 0)
             mx = float(b.get("MaxInventoryWeightAsDecimal") or b.get("MaxInventoryWeight") or 0)
             if mx and cur >= mx - margin:
                 self._fail(it, "overweight_soon", f"{ERROR_KO['overweight_soon']} (무게 {cur:.0f}/{mx:.0f}, 여유 {margin})"); return
-            # 실행
-            self._log(it, f"{p['passes'] + 1}회째 채집 시작 ({p['done']}/{target}개, 가방 {p['have']}, 무게 {cur:.0f}/{mx:.0f})")
+            if self._stopped(it):
+                return
+            # 실행 — 남은 개수가 100 보다 적으면 넘칠 수 있는 회다. 가방 기준(bag0)이 있을 때만 도중에 끊는다
+            left = target - p["done"]
+            goal_bag = _n(p.get("bag0")) + target if p.get("bag0") is not None else None
+            watch = left < MAX_PER_PASS and goal_bag is not None
+            self._log(it, f"{p['passes'] + 1}회째 채집 시작 (+{p['done']}/{target}개, 가방 {p['have']}, 무게 {cur:.0f}/{mx:.0f})"
+                          + (f" — 남은 {left}개: 가방이 {goal_bag}개에 닿으면 끊습니다" if watch else ""))
             qstop, qseen = self._quest_guard(it, settings)   # 도는 동안 지켜본다 (기본 꺼짐)
+            ctl: dict = {}
             try:
-                r = self._exec("execute_gathering", {"displayName": it["name"]}, it)
+                if watch:
+                    r, ctl = self._gather_watched(it, goal_bag)
+                else:
+                    r = self._exec("execute_gathering", {"displayName": it["name"]}, it)
             finally:
                 if qstop is not None:
                     qstop.set()                                  # **켠 것은 끈다**
-                p.pop("live", None)   # 회차가 끝났다 — 도는 동안의 어림수는 지운다 (회신이 진짜다)
+                p.pop("live", None); p.pop("liveSrc", None)   # 회가 끝났다 — 도는 동안의 어림수는 지운다 (가방이 진짜다)
             p["passes"] += 1
+            if r is None:
+                # 다음 카드에 넘겼다 (_goal_stop) — 채집 호출은 뒤에서 돌아온다. 목표에 닿은 가방 수로 끝낸다
+                p["have"] = _n(ctl.get("bag"))
+                p["done"] = max(0, p["have"] - _n(p.get("bag0")))
+                plan_left()
+                self._done(it, f"목표 도달 · {p['done']}/{target}개 ({p['passes']}회, {bag_line()}) — "
+                               f"남은 채집은 다음 카드의 명령이 끊습니다")
+                return
             body = r.body if isinstance(r.body, dict) else {}
-            gained = _n(body.get("gained"))
-            p["done"] += gained            # 시작 뒤 끊긴 오류(overweight·tool_broken·blocked…)도 gained 를 준다 — 부분 획득은 기록한다
+            gained = _n(body.get("gained"))   # 회신의 획득 — 가방을 못 읽을 때만 쓴다
+            if ctl.get("reached"):
+                # **목표에 닿아 우리가 끊은 회다** — 회신 result=stopped(stop_action) · error=canceled(연주로 밀어냄)는
+                # 실패가 아니다. 결과는 가방 수로 적고 다음 회는 부르지 않는다
+                read = r.error not in READ_RETRY_ERRORS and r.error != "loading"
+                self._bag_count(it, p, gained, read=read)
+                if p["done"] < target and _n(ctl.get("bag")) > _n(p.get("have")):
+                    p["have"] = _n(ctl.get("bag"))      # 끝난 뒤 가방을 못 읽었다 — 도중에 본 가방 수를 믿는다
+                    p["done"] = max(0, p["have"] - _n(p.get("bag0")))
+                plan_left()
+                how = {"stop": "stop_action", "music": "연주로 밀어내고 정지", "late": "호출이 먼저 끝남"}.get(ctl.get("how"), "")
+                self._log(it, f"목표 도달 회신: result={body.get('result') or '-'} error={r.error or '-'} · 회신 {gained}개 "
+                              f"({how}) {body.get('cost') or ''}".rstrip())
+                self._done(it, f"{p['done']}/{target}개 캐기 완료 · 목표에서 끊음 ({p['passes']}회, {bag_line()})")
+                return
             if not r.ok:
-                if gained:
-                    p["have"] += gained
-                    self._log(it, f"중단 회신: 획득 {gained}개까지 (error={r.error})")
+                # 시작 뒤 끊긴 오류(overweight·tool_broken·blocked…)도 부분 획득이 있다 — 가방으로 센다.
+                # 연결이 끊긴 것이면 가방도 못 읽는다 — 회신 값으로 메운다
+                before = p["done"]
+                self._bag_count(it, p, gained, read=r.error not in READ_RETRY_ERRORS and r.error != "loading")
+                got = p["done"] - before
+                if got > 0:
+                    self._log(it, f"중단 회신: 가방 +{got}개까지 (error={r.error}) → {where()}")
                 # **회신이 실패라고 해서 채집이 정말 끝난 것은 아니다.**
                 # 사용자가 지킴이를 켜 두었을 때만 퀘스트로 다시 본다.
                 #
@@ -3572,35 +3915,30 @@ class Queue:
                     if not self._quest_wait(it, settings):
                         self._exec_failed(it, r, body); return
                     got = self._bag_gain(it, p)
-                    p["done"] += got
-                    self._log(it, f"퀘스트가 끝났습니다 — 가방으로 센 획득 {got}개 → {p['done']}/{target}")
+                    self._log(it, f"퀘스트가 끝났습니다 — 가방으로 센 획득 {got}개 → {where()}")
                     idle = idle + 1 if got <= 0 else 0
                     if idle >= 2:
-                        self._fail(it, "no_progress",
-                                   f"{ERROR_KO['no_progress']} ({p['done']}/{target}개, {p['passes']}회)"); return
+                        self._fail(it, "no_progress", f"{ERROR_KO['no_progress']} ({where()})"); return
                     continue
                 if v == "retry":
-                    continue          # 다시 건다 (회차가 하나 늘고 **날개가 든다**)
+                    continue          # 다시 건다 (회가 하나 늘고 **날개가 든다**)
                 self._exec_failed(it, r, body); return
             if body.get("result") == "started":   # 낚시 전용: 목표 없이 자동 낚시만 켜고 돌아온다
                 self._done(it, "완료 회신: result=started — 자동 낚시 시작됨. 목표가 없어 여기서 끝냅니다 (그만두려면 stop_action)")
                 return
-            self._log(it, f"완료 회신: result={body.get('result')}, 획득 {gained}개 → {p['done']}/{target} {body.get('cost') or ''}".rstrip())
-            # 매 회 후: 가방 재확인 — 완료 판정에는 쓰지 않는다(표시·재고 캐시 갱신용)
-            items = self.cli("get_items", None, READ_TIMEOUT)
-            if items.ok:
-                store.set_cache("items", items.body)
-                p["have"] = _n(work.stock(items.body)["total"].get(it["name"]))   # 보유 = 가방+창고 합산
-            else:
-                p["have"] += gained   # 못 읽으면 응답으로 추정
-                self._log(it, f"가방 재확인 실패({items.error}) — 응답 gained 로 추정")
+            # 매 회 후: 가방 수로 센다 (못 읽으면 회신 gained)
+            before = p["done"]
+            self._bag_count(it, p, gained)
+            got = p["done"] - before
+            self._log(it, f"완료 회신: result={body.get('result')}, 회신 {gained}개 · 가방 {got:+d}개 → {where()} "
+                          f"{body.get('cost') or ''}".rstrip())
             if body.get("result") == "stopped_by_user":
                 # 이동 중 끊김 (실측 — 전투·직접 정지). 가공·제작과 같은 안내로 이 카드만 오류.
                 if self._stop.is_set():
                     it["status"] = "stopped"; self._log(it, "사용자 정지 중 회신: result=stopped_by_user"); return
                 self._fail(it, "stopped_by_user", ERROR_KO["stopped_by_user"]); return
             if body.get("result") == "stopped":
-                # **게임 쪽에서 이 채집 하나가 멈춘 것이다 — 우리 「■ 정지」가 아니다.**
+                # **게임 쪽에서 이 채집 하나가 멈춘 것이다 — 우리 「■ 정지」도, 목표 도달 정지(위 ctl.reached)도 아니다.**
                 # 예전에는 둘을 같은 `stopped` 로 적었고, `_run_card` 가 그걸 보고 "stopped" 를
                 # 돌려주면 그룹도 보드도 통째로 섰다. 그래서 **자식 하나가 멈췄다는 이유로
                 # 그룹 전체가 실패 열로 갔고, 「오류 시 계속」이 아무 일도 안 했다**.
@@ -3610,13 +3948,279 @@ class Queue:
                 # 나머지는 `onError` 가 정한다. 오류 코드는 카탈로그의 result 값 그대로 쓴다.
                 if self._stop.is_set():
                     it["status"] = "stopped"; self._log(it, "사용자 정지 중 회신: result=stopped"); return
-                self._fail(it, "stopped",
-                           f"{ERROR_KO['stopped']} ({p['done']}/{target}개, {p['passes']}회)"); return
+                self._fail(it, "stopped", f"{ERROR_KO['stopped']} ({where()})"); return
             # 한 개도 못 캤다 — 소모품이 떨어졌거나 채집지가 비었을 수 있다. 두 번 연속이면 끊는다
-            # (안 끊으면 max_passes 까지 헛돌며 회당 정령의 날개만 태운다).
-            idle = idle + 1 if gained <= 0 else 0
+            # (안 끊으면 남은 회를 돌며 회당 정령의 날개만 태운다).
+            idle = idle + 1 if got <= 0 else 0
             if idle >= 2:
-                self._fail(it, "no_progress", f"{ERROR_KO['no_progress']} ({p['done']}/{target}개, {p['passes']}회)"); return
+                self._fail(it, "no_progress", f"{ERROR_KO['no_progress']} ({where()})"); return
+
+    # ── 채집 목표 도달 정지 ──────────
+    #
+    # CLI 는 개수를 받지 않고 한 번에 최대 100개를 캔다. 남은 개수가 100 보다 적은 회는 그대로 두면 넘친다
+    # (250개 → 300개). 그래서 그 회만 **도는 동안 가방을 읽다가** 목표에 닿으면 끊는다.
+    #
+    # 실측 (docs/CLI.md 「채집 도중 읽기·정지」):
+    #   · get_items·get_activity 는 도는 채집을 끊지 않는다 — 가방 수가 도중에 올라간다 (6 → 16 → 64).
+    #   · stop_action 은 Mode.MainButtonState 가 "Stop" 일 때 받아들여진다 ("Stop confirmed").
+    #     "Hide"(채집지 사이를 이동 중)일 때는 invalid_state 로 거절된다. stop_action 은 날개를 쓰지 않는다.
+    #   · 받아들여지면 몇 초 뒤 execute_gathering 이 ok · result=stopped · gained 로 돌아온다.
+    #
+    # 실행 명령이 CLI 잠금을 쥐고 있으므로 이 자리의 호출은 전부 **잠금 없는 호출**(raw_cli)이고
+    # 공용 파일로 답을 메우지 않는다(allow_last_response=False) — 퀘스트 지킴이(_quest_look)와 같은 길.
+    #
+    # 첫 stop_action 이 invalid_state 면 (대표 결정, 2026-09-30):
+    #   ① 다음에 돌 작업 카드가 있으면 더 기다리지 않고 그 카드로 넘어간다 — 그 카드의 실행 명령이 도는 채집을
+    #      갈아치운다 — 실측: 채집 중 execute_crafting 을 보내면 채집 호출이 1초 안에 canceled 로 끝나고 제작이 이어진다.
+    #   ② 없으면 지금 든 악기로 악보 하나를 틀어 채집을 밀어내고 곧바로 stop_action 으로 연주를 멈춘다.
+    #      **미검증**(연주로 채집이 끊기는지). 틀 수 없으면 ③ 으로.
+    #   ③ STOP_RETRY_WAIT 초마다 STOP_RETRY_MAX 번까지 stop_action 을 다시 보낸다 (Hide 인 동안은 보내지 않는다).
+    GOAL_POLL = 1.0          # 도는 동안 가방 읽기 간격 (초) — 3초면 실측 8~10개를 넘겨 캤다
+    GOAL_READ_TIMEOUT = 20.0
+    STOP_RETRY_WAIT = 1.5
+    STOP_RETRY_MAX = 20
+    PUSH_STOP_TRIES = 4      # 밀어내려고 튼 연주를 멈추는 stop_action 시도 수 (invalid_state 면 0.8초 뒤 다시)
+    push_score = None        # () -> {"title": str} | {"why": str} — server 가 꽂는다 (폴리오 대기열의 지금 곡 · 보관함 첫 악보)
+
+    def _raw(self, command: str, body=None, timeout: float = 20.0):
+        """잠금 없는 호출 (공용 파일로 메우지 않는다)."""
+        try:
+            return self.raw_cli(command, body, timeout, allow_last_response=False)
+        except TypeError:          # 옛 서명(되돌아보기 끄기를 모르는 호출자)
+            return self.raw_cli(command, body, timeout)
+
+    def _call(self, command: str, body, timeout: float):
+        """러너의 CLI 호출. 넘겨준 채집 호출(_orphan)이 아직 잠금을 쥐고 있으면 잠금 없이 보낸다 —
+        기다리면 그 채집이 끝날 때까지(최대 몇 분) 다음 카드가 서 있게 된다. 그 밖에는 잠금 있는 호출."""
+        if self._orphan_alive():
+            return self._raw(command, body, timeout)
+        return self.cli(command, body, timeout)
+
+    def _orphan_alive(self) -> bool:
+        o = self._orphan
+        return bool(o is not None and not o["fin"].is_set())
+
+    @staticmethod
+    def _poll(sec: float) -> float:
+        """폴링 간격 — 검사(MOBIW_DEMO_FAST)에서도 0 이 되지 않게 아주 짧게 남긴다 (0 이면 헛도는 고리가 된다)."""
+        return max(0.02, sec * wait_scale())
+
+    def _gather_watched(self, it: dict, goal_bag: int) -> tuple:
+        """채집 한 회를 부르고, 도는 동안 가방을 지켜본다 → (회신 | None, ctl).
+
+        회신이 None 이면 다음 카드에 넘긴 것이다 (호출은 뒤에서 돌아온다 — _orphan). ctl 은
+        {reached, bag, how, handoff} — 목표에 닿았는지, 그때의 가방 수, 어떻게 끊었는지."""
+        box: dict = {}
+        fin = threading.Event()
+        handoff = threading.Event()
+        ctl: dict = {"reached": False, "bag": None, "how": "", "handoff": False}
+
+        def call() -> None:
+            try:
+                box["r"] = self._exec("execute_gathering", {"displayName": it["name"]}, it)
+            except Exception as e:   # 러너 쪽에서 다시 던진다
+                box["exc"] = e
+            finally:
+                fin.set()
+                if ctl.get("handoff"):   # 넘긴 뒤 돌아왔다 — 무엇으로 끝났는지 카드에 남긴다
+                    r2 = box.get("r")
+                    b2 = r2.body if r2 is not None and isinstance(r2.body, dict) else {}
+                    err2 = getattr(r2, "error", None)
+                    self._log(it, f"넘겨준 채집 호출이 돌아왔습니다: result={b2.get('result') or '-'} "
+                                  f"error={err2 or '-'} · 회신 {_n(b2.get('gained'))}개")
+                    self._event("gather", it.get("id"), f"「{it.get('name')}」 넘겨준 채집이 끝났습니다 "
+                                                         f"({err2 or b2.get('result') or 'ok'})")
+
+        th = threading.Thread(target=call, daemon=True, name="gather-call")
+        th.start()
+        wt = threading.Thread(target=self._gather_goal_watch, args=(it, goal_bag, fin, handoff, ctl),
+                              daemon=True, name="gather-goal")
+        wt.start()
+        while not fin.wait(0.05):
+            if handoff.is_set():
+                self._orphan = {"fin": fin, "it": it, "thread": th}
+                return None, ctl
+        wt.join(timeout=5.0)
+        if "exc" in box:
+            raise box["exc"]
+        return box["r"], ctl
+
+    def _raw_bag(self, it: dict):
+        """가방 수를 잠금 없이 읽는다 → int | None. 몸 {"name": 이름} 은 비슷한 이름도 준다(「부드러운 통나무」) —
+        DisplayName 이 같은 것만 센다 (work.stock)."""
+        try:
+            r = self._raw("get_items", {"name": it["name"]}, self.GOAL_READ_TIMEOUT)
+        except Exception:
+            return None
+        if not getattr(r, "ok", False):
+            return None
+        return _n(work.stock(r.body)["total"].get(it["name"]))
+
+    def _raw_main_button(self):
+        """get_activity 의 Mode.MainButtonState ("Stop" | "Hide" | …) — 못 읽으면 None."""
+        try:
+            r = self._raw("get_activity", "", self.GOAL_READ_TIMEOUT)
+        except Exception:
+            return None
+        if not getattr(r, "ok", False) or not isinstance(r.body, dict):
+            return None
+        m = r.body.get("Mode") if isinstance(r.body.get("Mode"), dict) else {}
+        return _s(m.get("MainButtonState")) or None
+
+    def _raw_stop(self):
+        try:
+            return self._raw("stop_action", None, self.GOAL_READ_TIMEOUT)
+        except Exception as e:
+            return _Failed(type(e).__name__, str(e))
+
+    def _gather_goal_watch(self, it: dict, goal_bag: int, fin: threading.Event, handoff: threading.Event,
+                           ctl: dict) -> None:
+        """도는 채집 한 회를 GOAL_POLL 초마다 가방으로 본다 — **읽기만**. 목표에 닿으면 끊는다 (_goal_stop)."""
+        p = it.setdefault("progress", {})
+        have0 = _n(p.get("have"))
+        while not fin.wait(self._poll(self.GOAL_POLL)):
+            if self._stop.is_set():
+                return          # ■ 정지는 stop() 가 stop_action 을 보낸다
+            bag = self._raw_bag(it)
+            if bag is None or fin.is_set():
+                continue
+            if p.get("liveSrc") in (None, "bag"):
+                p["live"], p["liveSrc"] = max(0, bag - have0), "bag"   # 카드의 「+N개」가 도는 동안 움직인다
+            if bag >= goal_bag:
+                ctl.update(reached=True, bag=bag)
+                self._log(it, f"가방 {bag}개 — 목표 {goal_bag}개에 닿았습니다 → stop_action")
+                self._goal_stop(it, fin, handoff, ctl)
+                return
+
+    def _goal_stop(self, it: dict, fin: threading.Event, handoff: threading.Event, ctl: dict) -> None:
+        """목표에 닿은 채집을 끊는다. 첫 stop_action → 거절(invalid_state)이면 ① 다음 카드에 넘기기 ② 연주로 밀어내기
+        ③ stop_action 다시 보내기 (위 주석). 모든 시도를 카드 로그에 남긴다."""
+        r = self._raw_stop()
+        if r.ok:
+            ctl["how"] = "stop"
+            self._log(it, f"stop_action 1회째 → 수락 ({_s(getattr(r, 'message', '')) or 'ok'})")
+            return
+        self._log(it, f"stop_action 1회째 → 거절 ({r.error}: {_s(getattr(r, 'message', ''))})")
+        if fin.is_set():
+            ctl["how"] = "late"
+            return
+        if r.error == "invalid_state":
+            nxt = self._next_action_card(it)
+            if nxt is not None and not self._stop.is_set():
+                ctl.update(handoff=True, how="handoff")
+                msg = (f"「{it['name']}」 목표 도달 — 지금은 멈출 수 없는 순간(이동 중)이라 다음 카드 「{nxt.get('name')}」로 "
+                       f"넘어갑니다. 그 카드의 명령이 채집을 대신 끊습니다")
+                self._log(it, msg)
+                self._event("gather", it.get("id"), msg)
+                handoff.set()
+                return
+            if self._push_out(it, fin, ctl):
+                return
+        self._stop_retry(it, fin, ctl, 2)
+
+    def _push_out(self, it: dict, fin: threading.Event, ctl: dict) -> bool:
+        """다음 카드가 없을 때 — 지금 든 악기로 악보를 틀어 채집을 밀어내고 곧바로 연주를 멈춘다 → 틀었으면 True.
+        틀 수 없으면(갈고리 없음·탈것·악보 없음·거절) False — 부르는 쪽이 stop_action 을 다시 보낸다."""
+        pick = {}
+        try:
+            pick = (self.push_score() if callable(self.push_score) else {"why": "악보를 고를 수 없는 실행"}) or {}
+        except Exception as e:
+            pick = {"why": f"{type(e).__name__}"}
+        title = _s(pick.get("title"))
+        if not title:
+            self._log(it, f"연주로 밀어내기 못 함 ({pick.get('why') or '틀 악보 없음'}) — stop_action 을 다시 보냅니다")
+            return False
+        msg = f"「{it['name']}」 목표 도달 — 다음 카드가 없어 「{title}」를 틀어 채집을 밀어내고 곧바로 멈춥니다 (미검증)"
+        self._log(it, msg)
+        self._event("gather", it.get("id"), msg)
+        pr = self._raw("play_music_score", {"title": title}, self.GOAL_READ_TIMEOUT)
+        if not pr.ok:
+            self._log(it, f"연주 시작 거절 ({pr.error}: {_s(getattr(pr, 'message', ''))}) — stop_action 을 다시 보냅니다")
+            return False
+        self._log(it, "연주 시작 → 곧바로 stop_action 으로 멈춥니다")
+        stopped = False
+        for k in range(1, self.PUSH_STOP_TRIES + 1):
+            sr = self._raw_stop()
+            self._log(it, f"연주 정지 stop_action {k}/{self.PUSH_STOP_TRIES} → "
+                          + ("수락" if sr.ok else f"거절 ({sr.error})"))
+            if sr.ok:
+                stopped = True
+                break
+            if sr.error != "invalid_state":
+                break
+            if self._stop.wait(self._poll(0.8)):
+                break
+        if not stopped:
+            self._event("gather", it.get("id"), f"「{it['name']}」 밀어내려고 튼 연주를 멈추지 못했습니다 — 게임에서 확인하세요")
+        ctl["how"] = "music"
+        return True
+
+    def _stop_retry(self, it: dict, fin: threading.Event, ctl: dict, first: int = 1) -> bool:
+        """stop_action 을 STOP_RETRY_WAIT 초마다 STOP_RETRY_MAX 번까지. MainButtonState 가 Hide(이동 중)면 보내지 않고
+        그 시도를 적은 뒤 기다린다. 호출이 돌아오거나 ■ 정지면 그만둔다. 받아들여지면 True."""
+        n = self.STOP_RETRY_MAX
+        for k in range(first, n + 1):
+            if fin.wait(self._poll(self.STOP_RETRY_WAIT)):
+                ctl["how"] = ctl.get("how") or "late"
+                return False
+            if self._stop.is_set():
+                return False
+            mb = self._raw_main_button()
+            if mb == "Hide":
+                self._log(it, f"stop_action {k}/{n}: 이동 중 (MainButtonState=Hide) — {self.STOP_RETRY_WAIT:g}초 뒤 다시")
+                continue
+            r = self._raw_stop()
+            self._log(it, f"stop_action {k}/{n} → " + ("수락" if r.ok else f"거절 ({r.error})")
+                          + (f" · MainButtonState={mb}" if mb else ""))
+            if r.ok:
+                ctl["how"] = "stop"
+                return True
+        self._log(it, f"stop_action 을 {n}번까지 보냈지만 멈추지 못했습니다 — 이 회가 끝날 때까지 둡니다 (넘친 만큼 더 캡니다)")
+        self._event("gather", it.get("id"), f"「{it.get('name')}」 목표에서 끊지 못했습니다 — 이 회가 끝날 때까지 캡니다")
+        return False
+
+    def _next_action_card(self, it: dict):
+        """이 카드 다음에 러너가 집어 들 카드 — 실행 명령을 보내는 종류(채집·제작·가공·수령)일 때만, 아니면 None.
+        그룹 안이면 같은 회차의 다음 pending 자식, 없으면 다음 회차의 첫 자식, 그다음은 보드의 다음 pending 항목."""
+        def first_pending(x):
+            if x.get("type") == "group":
+                if x.get("status") in ("error", "done"):
+                    return None
+                return next((c for c in (x.get("items") or []) if c.get("status") == "pending"), None)
+            return x if x.get("status") == "pending" else None
+        with self.lock:
+            nxt = None
+            g = self._group_of(it["id"])
+            if g is not None:
+                kids = list(g.get("items") or [])
+                i = next((k for k, c in enumerate(kids) if c.get("id") == it["id"]), len(kids))
+                nxt = next((c for c in kids[i + 1:] if c.get("status") == "pending"), None)
+                if nxt is None and self._repeat_of(g) > _n(g.get("loop")):
+                    # 다음 회차 — 되돌려질 첫 자식 (지난 회차에 실패해 빠질 것·걸린 가공은 건너뛴다)
+                    nxt = next((c for c in kids if c.get("status") != "waiting"
+                                and not (c.get("status") == "error"
+                                         and (not g.get("retryFailed", True) or self._stuck(c)))), None)
+                anchor = g
+            else:
+                anchor = it
+            if nxt is None:
+                roots = list(self.items)
+                j = next((k for k, x in enumerate(roots) if x is anchor), len(roots))
+                for x in roots[j + 1:]:
+                    nxt = first_pending(x)
+                    if nxt is not None:
+                        break
+        return nxt if nxt is not None and nxt.get("type") in ACTION_CARD_TYPES else None
+
+    def _settle_orphan(self) -> None:
+        """보드가 끝났는데 넘겨준 채집이 아직 돈다 — 다음 카드의 명령이 끊지 못했다. stop_action 을 다시 보내 본다."""
+        o = self._orphan
+        if o is None or o["fin"].is_set():
+            return
+        it = o["it"]
+        self._log(it, "보드가 끝났는데 넘겨준 채집이 아직 돌고 있습니다 — stop_action 을 다시 보냅니다")
+        self._event("gather", it.get("id"), f"「{it.get('name')}」 넘겨준 채집이 아직 돕니다 — stop_action 을 다시 보냅니다")
+        self._stop_retry(it, o["fin"], {}, 1)
 
     # 제작: 한 번에 count 회 (invalid_count 면 그 자리에서 오류로 두고 maxCount 를 알려준다)
     def _run_craft(self, it: dict) -> None:
@@ -3671,7 +4275,7 @@ class Queue:
         if mode != "none":
             it["status"] = "waiting"
             p.pop("collectRetry", None); p.pop("collectRetryAt", None)   # 새로 등록했다 — 지난 「수령분 없음」 횟수는 무관
-        w = self.cli("get_altering_works", "", READ_TIMEOUT)   # 읽기 — 화면의 가공 대기열 카드를 등록 직후 모습으로 갱신
+        w = self._call("get_altering_works", "", READ_TIMEOUT)   # 읽기 — 화면의 가공 대기열 카드를 등록 직후 모습으로 갱신
         left = 0
         if w.ok:
             store.set_cache("works", w.body)
@@ -3700,7 +4304,7 @@ class Queue:
         body = r.body if isinstance(r.body, dict) else {}
         if r.ok:
             self._refresh_bag(it)
-            w = self.cli("get_altering_works", "", READ_TIMEOUT)   # 수령 뒤 대기열 갱신 — 화면의 대기열 카드가 바로 줄어들게
+            w = self._call("get_altering_works", "", READ_TIMEOUT)   # 수령 뒤 대기열 갱신 — 화면의 대기열 카드가 바로 줄어들게
             if w.ok:
                 store.set_cache("works", w.body)
             # **ok 회신을 그대로 믿지 않는다.** 직접 정지·이동 실패면 게임은 ok 에 result=stopped_by_user·collected 0 으로 답한다.
@@ -3763,7 +4367,7 @@ class Queue:
             waiting = self._awaiting_collect()
         if not waiting or self._stop.is_set():
             return False
-        w = self.cli("get_altering_works", "", READ_TIMEOUT)
+        w = self._call("get_altering_works", "", READ_TIMEOUT)
         if not w.ok:
             return False
         store.set_cache("works", w.body)
@@ -3780,7 +4384,7 @@ class Queue:
                 left_s = float(p.get("collectRetryAt") or 0) - time.time()
                 if left_s > 0 and self._stop.wait(min(left_s, self.COLLECT_RETRY_WAIT)):
                     return collected
-                w = self.cli("get_altering_works", "", READ_TIMEOUT)
+                w = self._call("get_altering_works", "", READ_TIMEOUT)
                 if not w.ok:
                     continue    # 읽기 실패 — 다음 폴링에 다시
                 store.set_cache("works", w.body)
@@ -3880,7 +4484,7 @@ class Queue:
                 still = [x for x in self._awaiting_collect() if x["name"] in names]
             if not still:
                 return
-            w = self.cli("get_altering_works", "", READ_TIMEOUT)
+            w = self._call("get_altering_works", "", READ_TIMEOUT)
             if not w.ok:
                 self._fail(still[0], w.error or "cli_error", w.message); return
             store.set_cache("works", w.body)
@@ -3912,7 +4516,7 @@ class Queue:
             self._wait_and_collect(waiting, settings)
 
     def _refresh_bag(self, it: dict) -> None:
-        items = self.cli("get_items", None, READ_TIMEOUT)
+        items = self._read(it, "get_items", None)
         if items.ok:
             store.set_cache("items", items.body)
             it["progress"]["have"] = _n(work.stock(items.body)["total"].get(it["name"]))   # 보유 = 가방+창고 합산

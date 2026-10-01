@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<title>모비폴리오 방송</title>
+<!-- 손님 신청 페이지 (방송 모드). 스트리머 PC 에 터널로 바로 붙는다 — 약속은 docs/handoff/broadcast-api.md.
+     인라인 스크립트·on…= 처리기를 두지 않는다 (사이트 CSP 는 'self' + 해시만 연다). -->
+<link rel="icon" href="/folio/icon-256.png">
+<link rel="stylesheet" href="/css/tokens.css">
+<link rel="stylesheet" href="/folio/fonts/fonts.css">
+<link rel="stylesheet" href="/live/live.css">
+<script src="/live/live.js" defer></script>
+</head>
+<body>
+<div id="app">
+  <header id="hdr">
+    <span class="logo" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 000 8.4M16.2 7.8a6 6 0 010 8.4M4.9 4.9a10 10 0 000 14.2M19.1 4.9a10 10 0 010 14.2"/></svg></span>
+    <span class="ttl">모비폴리오 방송</span>
+    <span class="sp"></span>
+    <span id="me" hidden></span>
+  </header>
+
+  <!-- B1·B2 입장 -->
+  <form id="entry" autocomplete="off" novalidate>
+    <div class="lead">
+      <h1>방송에 들어가기</h1>
+      <p>스트리머가 알려 준 접속 코드를 넣어 주세요. 폴리오가 없어도 됩니다.</p>
+    </div>
+    <div class="field">
+      <label for="code">접속 코드</label>
+      <input id="code" name="code" type="text" inputmode="text" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="9" enterkeyhint="next" aria-describedby="codeErr">
+      <span id="codeErr" class="err" role="alert" hidden><span class="dot"></span><span>코드가 맞지 않습니다. 다시 확인해 주세요</span></span>
+    </div>
+    <span id="qrHint" hidden>QR로 열어서 코드가 채워져 있어요</span>
+    <div class="field">
+      <label for="name">내 이름 (선택 · 12자)</label>
+      <input id="name" name="name" type="text" maxlength="12" placeholder="스트리머에게 보일 이름" enterkeyhint="go">
+    </div>
+    <span class="grow"></span>
+    <button id="go" class="btn-main" type="submit">들어가기</button>
+  </form>
+
+  <!-- B3 공개 목록 -->
+  <main id="room" hidden>
+    <div id="now" hidden>
+      <span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <span class="txt"><span class="lbl">지금 연주 중</span><span class="t"><span id="nowTitle"></span> <span id="nowArtist"></span></span></span>
+      <span id="nowLeft" class="mono"></span>
+    </div>
+    <div id="plHead">
+      <span class="nm"><span id="plName"></span><span id="plCount" class="mono"></span></span>
+      <label class="search"><span aria-hidden="true">⌕</span><input id="q" type="search" placeholder="제목·아티스트 검색" autocomplete="off" spellcheck="false" aria-label="제목·아티스트 검색"></label>
+    </div>
+    <div id="list" role="list"></div>
+    <div id="mine" hidden>
+      <div id="waitNote" hidden><span class="dot"></span><span><span id="waitMin" class="mono"></span> 뒤에 다시 신청할 수 있어요</span></div>
+      <button id="mineHead" type="button" aria-expanded="false"><b>내 신청</b><span id="mineCount" class="mono"></span><span class="sp"></span><span id="mineArrow">▴</span></button>
+      <div id="mineList"></div>
+    </div>
+  </main>
+
+  <!-- B5 알림 -->
+  <div id="toast" role="status" hidden><span class="ck">✓</span><span class="txt"><span class="h">신청했습니다</span><span class="s">스트리머가 승인하면 들어갑니다</span></span></div>
+
+  <!-- B4 물음 창 -->
+  <div id="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgTitle" hidden>
+    <div class="scrim"></div>
+    <div class="box">
+      <h2 id="dlgTitle"></h2>
+      <p id="dlgText">스트리머가 승인하면 현재 재생목록 끝에 들어갑니다. 신청 뒤 <b id="dlgMin"></b> 동안은 다른 곡을 신청할 수 없어요.</p>
+      <div class="btns"><button id="dlgNo" type="button">취소</button><button id="dlgYes" type="button">신청</button></div>
+    </div>
+  </div>
+
+  <!-- B+ 안내 상태 -->
+  <div id="notice" hidden>
+    <div class="card" role="alert">
+      <span id="nIcon" aria-hidden="true"></span>
+      <h2 id="nTitle"></h2>
+      <p id="nText"></p>
+      <button id="nBtn" type="button"></button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

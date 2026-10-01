@@ -19,8 +19,10 @@ const OV_SHOW = [
   ["overlay_show_elapsed", "경과 시간", "이번 실행이 시작된 뒤 지난 시간 (실행 줄의 「경과」와 같은 값)", false],
   ["overlay_show_wings", "날개 소모", "정령의 날개 <b>예상</b> 소모 (실행 줄의 「예상 소모」와 같은 값)", false],
 ];
-// 밴드가 스스로 바꾸는 값 — ⋮⋮ 로 끌면 「가운데 위에 자동 배치」가 꺼지고 끌어 둔 자리로 바뀐다
-const OV_LIVE = ["overlay_follow_game"];
+// 밴드가 스스로 바꾸는 값 — ⋮⋮ 로 끌면 「가운데 위에 자동 배치」가 꺼지고, 밴드의 🔒 · ↗ 는
+// 「위치 잠금」·「클릭 통과」를 바꾼다. 폴링이 이 값들을 화면에 맞춘다 (화면에 남은 옛 값이 다시 저장되지 않게).
+// 밴드의 자리(화면 좌표·게임 기준 오프셋)는 이 탭이 **절대 보내지 않는다** — 밴드만 정한다.
+const OV_LIVE = ["overlay_follow_game", "overlay_lock", "overlay_click_through"];
 const OV = { built: false, status: null, saveT: null, pollT: null, pending: {} };
 
 const ovTg = (key, on) => `<button class="ov-tg${on ? " on" : ""}" data-ov="${key}" role="switch" aria-checked="${on ? "true" : "false"}"><span class="knob"></span></button>`;
@@ -43,7 +45,7 @@ function ovBuild() {
     + '<span class="row" style="flex-wrap:nowrap"><input type="range" id="ovOpac" min="20" max="100" step="5" class="ovrange">'
     + '<span class="mono small-t" id="ovOpacN" style="width:38px;text-align:right"></span></span></div>'
     + '<div class="srow"><span><span class="t">사건 때만 밝게</span><br><span class="d">완료·오류·회차 전환에 1.5초 100% 후 복귀</span></span>' + ovTg("overlay_flash", true) + '</div>'
-    + '<div class="srow"><span><span class="t">펼침 기본값</span><br><span class="d">▾ 를 눌러 대기 목록·가공 3칸 표시</span></span>'
+    + '<div class="srow"><span><span class="t">펼침 기본값</span><br><span class="d">▾ 를 눌러 대기 목록·가공 3칸 표시 · 밴드에서 ▾ 로 열고 닫은 상태는 다음 실행에도 이어집니다</span></span>'
     + ovSeg("overlay_expand", "off", [["off", "접힘"], ["on", "펼침"], ["error", "오류 때만"]]) + '</div>'
     + '<div class="ssec">동작</div>'
     + '<div class="srow"><span><span class="t">가공 완료 시 자동 일괄 수령</span><br><span class="d">끄면 밴드의 「일괄 수령」 버튼을 눌러야 합니다 · 어느 쪽이든 큐에 <b>담기만</b> 하고 실행은 「시작」입니다</span></span>' + ovTg("overlay_auto_collect", false) + '</div>'
@@ -62,7 +64,12 @@ function ovBuild() {
   $("ovTest").onclick = async () => {
     // **이 PC 의 창을 건드리는 것은 전부 `/api/overlay` 로 간다** — 밖(폰)에서는 절대 안 되는 길이라
     // 통째로 막아 두었기 때문이다. 설정 저장(`/api/settings`)과 섞여 있으면 둘 다 막아야 했다.
-    const r = await api("/api/overlay", { settings: ovForm(), overlayTest: true });
+    // 폼 전체(ovForm)를 보내지 않는다 — 3초 늦은 화면 값이 방금 끝낸 끌기·밴드에서 바꾼 잠금·관통을 덮는다.
+    // 아직 안 보낸 변경(OV.pending)만 함께 보낸다. 테스트 표시 자체는 설정을 바꾸지 않는다.
+    clearTimeout(OV.saveT);
+    const patch = OV.pending; OV.pending = {};
+    const r = await api("/api/overlay", { settings: patch, overlayTest: true });
+    if (r && r.settings) S.settings = r.settings;
     if (r && r.overlay) { OV.status = r.overlay; ovStatus(); }
     if (r && r.overlay && !r.overlay.running) toast("먼저 「오버레이 밴드」를 켜 주세요");
   };
@@ -189,8 +196,8 @@ async function renderOverlayTab() {
     if (!sec || sec.hidden) { clearInterval(OV.pollT); OV.pollT = null; return; }
     const r = await api("/api/settings?nocli=1");
     if (r && r.overlay) { OV.status = r.overlay; ovStatus(); }
-    // 밴드 쪽에서 바뀐 값(F10·F2 단축키, ⋮⋮ 드래그가 끄는 「게임 창에 맞춤」)만 화면에 맞춘다.
-    // 전부 다시 채우면 지금 만지고 있던 항목이 되돌아간다 — 그래서 이 셋만 본다.
+    // 밴드 쪽에서 바뀐 값(OV_LIVE — ⋮⋮ 끌기가 끄는 자동 배치, 🔒 잠금, ↗ 관통)만 화면에 맞춘다.
+    // 전부 다시 채우면 지금 만지고 있던 항목이 되돌아간다 — 그래서 이것만 본다.
     if (r && r.settings) {
       S.settings = r.settings;
       for (const k of OV_LIVE) {

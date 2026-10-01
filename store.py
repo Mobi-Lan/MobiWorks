@@ -60,16 +60,52 @@ def _path(name: str) -> str:
     return os.path.join(DATA_DIR, name)
 
 
-def load(name: str, default):
-    """파일이 없으면 default. 있는데 못 읽으면 .corrupt-<ts> 로 격리하고 default (원본 보존)."""
+class ReadBusy(OSError):
+    """파일은 있는데 잠깐 못 연다 (공유 위반·권한 — 백신·백업·동기화 도구가 잡고 있다). 내용이 깨진 것이 아니다."""
+
+
+LOAD_TRIES = 6        # 못 열면 이만큼 다시 해 본다 (0.05·0.1·…초 — 모두 합쳐 1초 남짓)
+
+
+def _read_bytes(p: str) -> bytes | None:
+    """파일 바이트. 없으면 None. **잠깐 못 여는 것(OSError)은 몇 번 다시 해 본다** — 끝내 못 열면 ReadBusy.
+
+    못 여는 것과 깨진 것은 다르다. 백신·백업 도구가 파일을 잠깐 잡고 있을 때 이것을 「깨짐」으로 보고
+    옮겨 버리면 설정이 통째로 기본값이 된다 (1.0.7 제보: 오버레이 위치·크기 초기화)."""
+    last: OSError | None = None
+    for i in range(LOAD_TRIES):
+        try:
+            with open(p, "rb") as f:
+                return f.read()
+        except FileNotFoundError:
+            return None
+        except OSError as e:
+            last = e
+            if i < LOAD_TRIES - 1:
+                time.sleep(0.05 * (i + 1))
+    raise ReadBusy(str(last))
+
+
+def load(name: str, default, strict: bool = False):
+    """파일이 없으면 default. **내용이** 깨져 있으면 .corrupt-<ts> 로 격리하고 default (원본 보존).
+
+    **잠깐 못 여는 것은 깨짐이 아니다** — 몇 번 다시 해 보고, 끝내 못 열면 원본을 그대로 둔 채 default 를 준다.
+    `strict=True` 면 그때 ReadBusy 를 던진다 — 읽은 값에 덧붙여 **다시 쓰는** 쪽(set_settings)이
+    기본값으로 원본을 덮지 않게."""
     p = _path(name)
     with LOCK:
-        if not os.path.exists(p):
+        try:
+            raw = _read_bytes(p)
+        except ReadBusy as e:
+            print(f"[store] {name} 을 열지 못했습니다 (다른 프로그램이 잡고 있는 듯 — 파일은 그대로 둡니다): {e}", flush=True)
+            if strict:
+                raise
+            return default
+        if raw is None:
             return default
         try:
-            with open(p, encoding="utf-8-sig") as f:   # 메모장이 BOM 을 붙여도 읽힌다
-                return json.load(f)
-        except Exception as e:
+            return json.loads(raw.decode("utf-8-sig"))   # 메모장이 BOM 을 붙여도 읽힌다
+        except Exception as e:     # 잘림·다른 인코딩·널바이트·너무 깊음(RecursionError) — 내용이 깨졌다
             bad = f"{p}.corrupt-{int(time.time())}"
             try:
                 os.replace(p, bad)
@@ -79,8 +115,8 @@ def load(name: str, default):
             return default
 
 
-def _load_dict(name: str) -> dict:
-    d = load(name, {})
+def _load_dict(name: str, strict: bool = False) -> dict:
+    d = load(name, {}, strict=strict)
     return d if isinstance(d, dict) else {}
 
 
@@ -263,6 +299,10 @@ DEFAULT_SETTINGS = {
     "overlay_opacity": 100,          # 평소 불투명도 % (20~100). 사건 때는 자동 100%
     "overlay_flash": True,          # 완료·오류·회차 전환에 1.5초 100% 후 복귀
     "overlay_expand": "off",        # 펼침 기본값: off(접힘) | on(펼침) | error(오류 때만)
+    # 밴드의 ▾ 로 **마지막에 손으로** 열고 닫은 상태: ""(없음 — 펼침 기본값을 따른다) | on | off.
+    # 다음 실행에 이 상태로 뜬다. 「펼침 기본값」을 바꾸면 "" 로 지워진다 (바꾼 값이 다음 손 조작 전까지 기준).
+    # 탭에 줄이 없는 값이다 — 밴드만 쓴다 (`overlay.Overlay._remember_expand`).
+    "overlay_expand_last": "",
     "overlay_auto_collect": False,  # 가공 완료를 보면 수령 항목을 자동으로 큐에 담는다 (실행은 사용자가)
     "overlay_click_through": True,  # 클릭 통과. 「일괄 수령」·⋮⋮·▾ 만 예외로 눌린다
     "overlay_lock": False,          # 위치 잠금 (끄면 ⋮⋮ 를 끌어 옮긴다)
@@ -333,6 +373,11 @@ DEFAULT_SETTINGS = {
     # 서버가 화면을 낼 때 dark·light 면 `<html data-theme>` 을 박는다 (server.render_index). 폰은 기본으로 이 값을 따르고,
     # 폰에서 고르면 그 폰에만 적용된다 (ui/js/theme.js). 게임 위 화면(연출·오버레이)은 늘 다크 — 이 값과 상관없다.
     "ui_theme": "auto",
+    # 방송 모드 (broadcast.py) — 방송 창 「방송 설정」 시트의 값과 마지막으로 공개한 재생목록
+    "bc_interval_min": 3,     # 1인 신청 간격(분) — 한 손님이 다음 곡을 신청하기까지
+    "bc_cap": 20,             # 대기 신청 상한 — 닿으면 손님 쪽 신청이 잠긴다
+    "bc_auto": False,         # 자동 승인 — **기본 꺼짐** (켜면 신청이 확인 없이 현재 재생목록 끝에 들어간다)
+    "bc_pl": "",              # 공개 목록(재생목록 id) — 비면 첫 재생목록
 }
 _RANGES = {
            # 모비폴리오에서 가져온 것 (그쪽 값 그대로)
@@ -345,13 +390,14 @@ _RANGES = {
            "wing_cap_window_min": (1, 120), "wing_cap_waste_min": (1, 120),
            "overlay_opacity": (20, 100), "overlay_x": (-32000, 32000), "overlay_y": (-32000, 32000),
            "overlay_off_x": (-32000, 32000), "overlay_off_y": (-32000, 32000),
-           "remote_idle_min": (0, 720)}
+           "remote_idle_min": (0, 720),
+           "bc_interval_min": (1, 30), "bc_cap": (1, 99)}
 # 값이 정해진 문자열 설정. 목록에 없는 값은 버린다(기본값 유지) — 오타가 조용히 저장되면 화면이 이상하게 돈다.
 _ENUMS = {"opening_engine": ("web", "tk"),
           # 팩 이름은 폴더 이름이자 연출 페이지가 싣는 파일 경로(`/folio/themes/<이름>/…`)다 — 목록 밖의 값은 버린다
           # (연출 페이지의 THEMES 와 같아야 한다 · tests/test_opening_themes.py)
           "opening_theme": ("card", "film", "ticket", "phone", "random"),   # random = 연출마다 넷 중 하나를 뽑는다 (팩 이름이 아니다)
-          "overlay_expand": ("off", "on", "error"), "overlay_toast": ("on", "error", "off"),
+          "overlay_expand": ("off", "on", "error"), "overlay_expand_last": ("", "on", "off"), "overlay_toast": ("on", "error", "off"),
           "overlay_backdrop": ("solid", "glass"),
           # 목록에 없는 값이 저장되면 **범위가 넓어질 수 있다** — 오타 하나로 「run」이 되면 안 된다.
           # 여기 없는 값은 버려져 기본값(read)이 남는다.
@@ -422,9 +468,24 @@ def _coerce(k: str, v):
 RETIRED_SETTINGS = ("opening_video", "opening_video_path", "ov_nearby", "ov_banner_sec")
 
 
+_last_settings: dict | None = None   # 마지막으로 제대로 읽은 설정 — 파일을 잠깐 못 열 때 기본값 대신 이것을 준다
+
+
 def get_settings() -> dict:
+    """설정. **파일을 잠깐 못 열면(ReadBusy) 마지막으로 읽은 값**을 준다 — 기본값을 주면 그 순간
+    오버레이가 꺼지고 위치가 0,0 으로 돌아간다(1.0.7 제보). 처음부터 못 열었으면 기본값이다."""
+    global _last_settings
+    with LOCK:
+        try:
+            d = _settings_from(_load_dict("settings.json", strict=True))
+        except ReadBusy:
+            return dict(_last_settings) if _last_settings is not None else dict(DEFAULT_SETTINGS)
+        _last_settings = dict(d)
+        return d
+
+
+def _settings_from(raw: dict) -> dict:
     d = dict(DEFAULT_SETTINGS)
-    raw = _load_dict("settings.json")
     for k, v in raw.items():
         if k in DEFAULT_SETTINGS:
             c = _coerce(k, v)
@@ -443,19 +504,26 @@ def get_settings() -> dict:
 def settings_ahead() -> int:
     """저장된 설정의 스키마가 이 앱보다 높으면 그 값, 아니면 0. 높으면 쓰지 않는다 — 모르는 키를 지우면
     새 버전이 저장한 설정이 옛 앱을 거칠 때마다 깎인다(강등). recipes.json 과 같은 규칙."""
-    v = _load_dict("settings.json").get(SCHEMA_KEY)
+    return _ahead_of(_load_dict("settings.json"))
+
+
+def _ahead_of(raw: dict) -> int:
+    v = raw.get(SCHEMA_KEY)
     n = v if isinstance(v, int) and not isinstance(v, bool) else 0
     return n if n > SCHEMA else 0
 
 
 def set_settings(patch: dict) -> dict:
+    global _last_settings
     with LOCK:
-        ahead = settings_ahead()
+        # **한 번만, 엄격하게 읽는다.** 잠깐 못 연 파일을 빈 설정으로 보고 덧붙여 쓰면 사용자의 설정 전부가
+        # 기본값으로 덮인다 — 그때는 저장하지 않고 ReadBusy 를 올린다 (원본은 그대로 남는다).
+        raw = _load_dict("settings.json", strict=True)
+        ahead = _ahead_of(raw)
         if ahead:
             print(f"[store] settings schema {ahead} > {SCHEMA} — 저장하지 않습니다 (앱을 업데이트하세요)", flush=True)
-            return get_settings()
-        raw = _load_dict("settings.json")
-        d = get_settings()
+            return _settings_from(raw)
+        d = _settings_from(raw)
         for k, v in (patch or {}).items() if isinstance(patch, dict) else []:
             if k in DEFAULT_SETTINGS:
                 c = _coerce(k, v)
@@ -466,6 +534,7 @@ def set_settings(patch: dict) -> dict:
         keep = {k: v for k, v in raw.items()
                 if k not in DEFAULT_SETTINGS and k != SCHEMA_KEY and k not in RETIRED_SETTINGS}
         save("settings.json", {SCHEMA_KEY: SCHEMA, **keep, **d})
+        _last_settings = dict(d)
         return d
 
 
@@ -558,7 +627,7 @@ def set_ui(page=None, prefs=None) -> dict:
     (화면이 지운 열쇠 = 여기서도 없는 열쇠. 테마 「자동」이 키를 지우는 것으로 표현된다).
     settings.json 의 다른 칸은 그대로 둔다."""
     with LOCK:
-        raw = _load_dict("settings.json")
+        raw = _load_dict("settings.json", strict=True)   # 잠깐 못 열었으면 덮어쓰지 않는다
         ui = dict(raw.get(UI_KEY)) if isinstance(raw.get(UI_KEY), dict) else {}
         if page is not None:
             ui["last_page"] = norm_page(page)
@@ -2852,7 +2921,7 @@ def restore_apply(data: bytes, version: str = "", skip: dict | None = None) -> d
                 skipped.append({"file": rel, "reason": str(skip[rel])})
                 continue
             if rel == "settings.json":
-                raw = _load_dict("settings.json")
+                raw = _load_dict("settings.json", strict=True)
                 new = dict(raw)
                 for k, v in obj.items():
                     if k == SCHEMA_KEY or k in RETIRED_SETTINGS:   # 없앤 기능의 키는 들이지 않는다

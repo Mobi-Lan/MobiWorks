@@ -24,7 +24,9 @@ const gStep=(c)=>c.type==="gather"?100:1;
    (필드가 없던 시절의 저장본은 등록 뒤 수령이 기본이었다. 새로 담는 항목의 기본값이 "none" 인 것과는 별개다.) */
 const gMode=(c)=>c.collect==="none"?"none":"later";
 const G_MODE_KO={none:"걸기만 (등록하고 다음 항목)",later:"등록 후 다음 항목 진행 · 완료되면 수령",wait:"완료까지 그 자리에서 기다림"};
-function gSub(c){if(c.type==="gather")return `${fmtN(gQty(c))}개 · 예상 ${gpass(gQty(c))}회`;
+// 채집 — 「3회 · 날개 15 · 가방 47 → 목표 297」 (개수는 스테퍼에 있다. 가방을 모르면 앞 둘만)
+function gSub(c){if(c.type==="gather"){const n=gQty(c);const h=c.progress&&c.progress.have;
+    return [gRunsTxt(n),gGoalTxt(h!=null?h:null,n)].filter(Boolean).join(" · ");}
   if(c.type==="collect")return `${c.facility||""} 완료분 수령`;
   if(c.type==="alter")return `가공 ${fmtN(c.count||1)}건 · ${G_MODE_KO[c.collect]||G_MODE_KO.later}`;
   return `제작 ${fmtN(c.count||1)}회`;}
@@ -180,7 +182,7 @@ function gBindRows(run){const d=gEl();
       // 치고 있는 칸은 건드리지 않는다 — 커서가 튀고 「10」을 치다 「1」에서 잘린다
       if(inp&&!fromInput&&Number(inp.value)!==v)inp.value=v;
       const sb=el.querySelector(".gsub");if(sb){sb.textContent=gStatus(c);if(sb.parentNode&&sb.parentNode.title)sb.parentNode.title=sb.textContent;}gQtyPush(c);};
-    const bump=(dv)=>put(gQty(c)+dv*gStep(c));
+    const bump=(dv)=>put(c.type==="gather"?gstepN(gQty(c),dv):gQty(c)+dv*gStep(c));   // 채집은 100 눈금에 맞춰 (250 → 300 / 200)
     if(dec&&!dec.disabled)MW.holdBtn(dec,()=>bump(-1));
     if(inc&&!inc.disabled)MW.holdBtn(inc,()=>bump(1));
     if(inp&&!inp.disabled){inp.oninput=()=>{const v=Number(inp.value);if(inp.value!==""&&isFinite(v))put(v,true);};

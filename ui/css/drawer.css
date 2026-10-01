@@ -116,6 +116,8 @@
 .dw-r .dwst .badge{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
 .dw-r .per{text-align:right;font-family:var(--mono);color:var(--fg2)}
 .dw-r .mats{display:flex;gap:4px;flex-wrap:nowrap;overflow:hidden;font-size:var(--fs-xs)}
+/* 채집 행의 재료 칸 — 「가방 47 → 목표 297」 (N3 — 개수로 담고 가방 수로 센다) */
+.dw-r .mats .gest{color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-family:var(--mono)}
 .dw-r .mat{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:4px;border:1px solid var(--line2);color:var(--sub);white-space:nowrap}
 .dw-r .mat b{font-family:var(--mono);font-weight:400;color:var(--fg2)}
 .dw-r .mat.short{border-color:var(--badline);color:var(--bad2)}
@@ -300,7 +302,13 @@
   .dw-r .nm b{font-size:var(--fs-body);font-weight:700;color:var(--gold2);line-height:1.3}
   .dw-r .nm .x{display:inline;font-style:normal;font-family:var(--mono);font-size:var(--fs-eyebrow);
     font-weight:400;color:var(--sub2);margin-left:5px}
-  .dw-r .nm i,.dw-r .per,.dw-r .unit,.dw-r.k-gather .dwnote{display:none}   /* 넓은 폭의 짝 — 둘째 줄·이름·값 칸에 같은 값이 있다 */
+  .dw-r .nm i,.dw-r .per,.dw-r .unit{display:none}   /* 넓은 폭의 짝 — 둘째 줄·이름·값 칸에 같은 값이 있다 */
+  /* 채집 — 스테퍼 아래 「3회 · 날개 15」는 좁은 폭에서도 둔다(둘째 줄에 넣으면 375px 에서 「가방 12 → …」로 잘렸다).
+     도구가 있는 행은 둘째 줄에서 「도구 OK · 낚시」를 빼고 「가방 12 → 목표 262」만 — 핵심 숫자가 보이게 */
+  .dw-r.k-gather .qty{gap:1px}
+  .dw-r.k-gather .dwnote{display:block;font-family:var(--mono);font-size:9.5px}
+  .dw-r.gok .l2>.dwst,.dw-r.gok .l2>.sep,.dw-r.gok .l2 .tx>.sub,.dw-r.gok .l2 .tx>.sep{display:none}
+  .dw-r .l2 .gest{display:inline;color:var(--fg2)}
   /* 둘째 줄 — **한 요소 한 줄**: flex gap 4 · 10px · #6f7a8a
      상태는 색만 있는 글자(600, 줄어들지 않음) · 「·」 · 나머지가 한 덩어리로 말줄임 */
   .dw-r .l2{grid-area:2/2/3/3;display:flex;gap:4px;min-width:0;font-size:var(--fs-eyebrow);

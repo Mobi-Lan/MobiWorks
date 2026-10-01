@@ -211,19 +211,26 @@ def _vt(ver: str) -> tuple:
     return tuple(int(x) if x.isdigit() else 0 for x in ver.split("."))
 
 
+# 사이트(wo.mobimml.com)에는 **최신 판 zip 하나만** 둔다. 지난 판은 GitHub 릴리스
+# (`https://github.com/Mobi-Lan/MobiWorks/releases/download/v<판>/<zip>`)에서 받는다 — 판마다 GitHub 에 zip 을 꼭 올린다.
+# 공개하지 않은 판 — release/ 에 zip 이 있어도 최신 판으로 치지 않는다 (1.0.8 은 테스트 빌드만 만들었다).
+SITE_SKIP = {"1.0.8"}
+
+
 def site_zips() -> list:
-    """사이트에 두는 zip = **새 판 + 직전 한 판** (받는 중에 옛 판이 지워져 404 가 나지 않게). release/ 에 더 오래된 zip 이 쌓여 있어도
-    목록에는 넣지 않는다 — 사이트에 없는 파일의 줄이 SHA256SUMS 에 섞이면 안 된다."""
+    """사이트에 두는 zip = release/ 에 있는 공개 판 가운데 **가장 새 것 하나**. SHA256SUMS 도 이 한 줄이다."""
     vers = []
     for x in os.listdir(REL):
         if is_release_zip(x):
-            vers.append(x[len(RELEASE_NAME) + 1:-4])
+            v = x[len(RELEASE_NAME) + 1:-4]
+            if v not in SITE_SKIP:
+                vers.append(v)
     vers.sort(key=_vt)
-    return [rel_zip(v) for v in vers[-2:]]
+    return [rel_zip(v) for v in vers[-1:]]
 
 
 def write_sums() -> dict:
-    """SHA256SUMS: 사이트에 올릴 zip(새 판 + 직전 한 판)만 적고, 적은 이름이 그 목록과 같은지 대조한다."""
+    """SHA256SUMS: 사이트에 두는 zip(`site_zips`)마다 한 줄 적고, 적은 이름이 그 목록과 같은지 대조한다."""
     zips = site_zips()
     sums = {x: sha256_file(os.path.join(REL, x)) for x in zips}
     with open(os.path.join(REL, "SHA256SUMS.txt"), "w", encoding="ascii", newline="\n") as f:
@@ -309,7 +316,7 @@ def main() -> None:
     print(f"  zip    {bz['url']}  ({bz['size']:,} B · 1.0.2 이상이 제자리 업데이트로 받는다)")
     print()
     print(f"올릴 것: release/{rel_zip(ver)} · latest.json · SHA256SUMS.txt — zip 도 {base}/ 에 (latest.json 의 zip.url)")
-    print(f"사이트에 둘 zip (SHA256SUMS 와 같음): {', '.join(site_zips())} — 그보다 오래된 zip 은 사이트에서 내린다")
+    print(f"사이트에 둘 zip (SHA256SUMS 와 같음): {', '.join(site_zips())} — 직전 판은 사이트에서 내리고 /releases/ 로 302, 지난 판은 GitHub 릴리스에서")
     print("VirusTotal: python tools/vt_check.py release/" + rel_zip(ver) + " --json release/virustotal.json  (0 이 아니면 올리지 않는다)")
     print(f"확인:   {base}/latest.json 을 실제로 받아 sha256 이 위와 같은지 대조 (푸시만으로 반영됐다고 보지 말 것)")
 

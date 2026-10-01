@@ -84,6 +84,10 @@ def reset(fast: bool | None = None) -> None:
             # 재화 셋째 칸 — 화면은 골드 · 정령의 날개 · **데카** 3칸이다. 데모에 데카가 없어 두 칸만 보였다
             "deca": 62_029,
         })
+        if not (FAST if fast is None else fast):
+            # UI 데모 — 채집 1회를 9초 동안 30칸으로 돌려 가방이 도중에 오르게 한다. 러너는 3초마다 가방을 읽으므로
+            # 한 회가 그보다 길어야 목표 도달 정지를 화면에서 볼 수 있다 (실물의 한 회는 몇 분이다)
+            S.update(gather_ticks=30, gather_tick_sec=0.3)
         if not FAST and ALTER_SEC >= 30:   # UI 데모용 초기 대기열 (타이머 화면 확인)
             now = time.time()
             S["works"] = [{"name": "고급 무명실", "facility": "물레", "done_at": now + 25},
@@ -96,7 +100,15 @@ def set_state(**kw) -> None:
     """테스트가 상황을 만든다: bag=, weight=, max_weight=, tool={이름:내구도}, wings=, pipe=, blocked_kind=, storage=,
     blocked_once=kind (다음 실행 명령 한 번만 blocked), collect_stop_once=True (다음 수령 한 번을 stopped_by_user·collected 0 으로 — 완료분은 남는다),
     autoplay=, autoplay_target= (get_activity.AutoPlayTarget),
-    perf={"title":…, "loop":bool, "ends_at":epoch} (연주 중)."""
+    perf={"title":…, "loop":bool, "ends_at":epoch} (연주 중),
+    fail_next={명령: [오류, …]} (그 명령의 다음 호출들을 차례로 그 오류로 — "disconnected" 는 exit 5, 그 밖은 body.error.
+      "loading" 은 게임이 재접속·캐릭터 선택 중인 답, "ok" 는 그 호출만 그대로 통과), gather_yield=N (채집 1회에 실제로 가방에 드는 수 — 100 보다 적게),
+    gather_reply=N (채집 회신의 gained 를 이 값으로 — 가방과 회신이 어긋나는 경우),
+    gather_ticks=N (채집 1회를 N 칸으로 나눠 **도는 동안 가방이 오르게** — 칸마다 gather_tick_sec 초, 기본 0.02),
+    gather_modes=["Hide","Stop",…] (칸마다 돌아가며 get_activity.Mode.MainButtonState — Hide 인 동안 stop_action 은 invalid_state),
+    gather_stop_lag=N (stop_action 이 받아들여진 뒤 회신이 돌아오기까지의 칸 수, 기본 1).
+    칸으로 도는 채집은 다른 실행 명령(제작·가공·수령·채집·연주)이 들어오면 error=canceled 로 끝난다 — 카탈로그의
+    「canceled = 다른 명령이 이 행동을 대신했다」를 흉내낸 것이다 (**실물 미검증**)."""
     with _LOCK:
         for k, v in kw.items():
             if k in ("bag", "storage", "tool") and isinstance(v, dict):
@@ -164,9 +176,31 @@ def _blocked() -> dict | None:
     return None
 
 
+def _forced_fail(command: str):
+    """set_state(fail_next={명령: [오류…]}) 로 걸어 둔 실패를 하나 꺼낸다 → (code, body) | None."""
+    q = (S.get("fail_next") or {}).get(command)
+    if not q:
+        return None
+    err = q.pop(0)
+    if err in (None, "ok"):   # 이 호출은 그대로 통과 — 몇 번째 호출이 실패할지 고를 때
+        return None
+    if err == "disconnected":
+        return 5, {"error": "disconnected", "message": "game_off"}
+    if err == "loading":
+        return 0, {"error": "loading", "message": "The game is loading (reconnecting or character select).", "loading": True}
+    return 0, {"error": err, "message": f"demo {err}"}
+
+
 def respond(command: str, body=None):
     """(exit code, 파싱된 응답) 을 돌려준다. 실제 CLI 와 같은 규약 (exit 0 이어도 body.error 면 실패).
     채집은 지연 동안 잠금을 놓는다 — 실제 CLI 처럼 그 사이 stop_action 이 들어올 수 있게 (진행 중 플래그가 지워지면 result=stopped)."""
+    with _LOCK:
+        forced = _forced_fail(command)
+        ticked = command == "execute_gathering" and bool(S.get("gather_ticks"))
+    if forced is not None:
+        return forced
+    if ticked:
+        return _gather_ticked(body)
     if command == "execute_gathering" and GATHER_DELAY:
         with _LOCK:
             pre = _gather_pre(body)
@@ -203,18 +237,84 @@ def _gather_pre(body):
     return None
 
 
+def _preempt() -> None:
+    """칸으로 도는 채집을 다른 실행 명령이 갈아치운다 — 도는 고리가 세대(gen)가 바뀐 것을 보고 canceled 로 끝낸다."""
+    if S.get("in_progress") == "gathering" and S.get("gather_mode") is not None:
+        S["gather_gen"] = int(S.get("gather_gen") or 0) + 1
+        S["in_progress"] = None
+        S["gather_mode"] = None
+
+
+def _gather_ticked(body):
+    """채집 1회를 gather_ticks 칸으로 — 칸마다 가방이 오르고(실측: 6 → 16 → 64), MainButtonState 가 gather_modes 를 돈다.
+    stop_action 이 받아들여지면 gather_stop_lag 칸 뒤 result=stopped 로, 다른 실행 명령이 오면 error=canceled 로 끝난다."""
+    with _LOCK:
+        _preempt()
+        pre = _gather_pre(body)
+        if pre is not None:
+            return pre
+        name = str((body if isinstance(body, dict) else {}).get("displayName") or "")
+        S["gather_gen"] = gen = int(S.get("gather_gen") or 0) + 1
+        ticks = max(1, int(S["gather_ticks"]))
+        modes = list(S.get("gather_modes") or ["Stop"])
+        lag = max(0, int(S.get("gather_stop_lag", 1)))
+        room = int((S["max_weight"] - S["weight"]) / ITEM_WEIGHT)
+        total = min(MAX_PER_PASS, room)
+        if S.get("gather_yield") is not None:
+            total = min(total, max(0, int(S["gather_yield"])))
+        S["gather_mode"] = modes[0]
+        tick = float(S.get("gather_tick_sec", 0.02))
+    added, stop_at = 0, None
+    for i in range(ticks):
+        time.sleep(tick)
+        with _LOCK:
+            if S.get("gather_gen") != gen:     # 다른 명령이 갈아치웠다
+                return 0, {"error": "canceled", "message": "Another command replaced this action.",
+                           "gained": added, "target": MAX_PER_PASS, "cost": _cost()}
+            if S["in_progress"] is None:       # stop_action 이 받아들여졌다 — 몇 칸 뒤 돌아온다
+                stop_at = i if stop_at is None else stop_at
+                if i - stop_at >= lag:
+                    S["gather_mode"] = None
+                    S["tool"][name] -= 1
+                    return 0, {"result": "stopped", "gained": added, "target": MAX_PER_PASS,
+                               "message": "Gathering stopped before reaching the goal.", "cost": _cost()}
+                continue
+            want = round(total * (i + 1) / ticks) - added
+            if want > 0:
+                S["bag"][name] = S["bag"].get(name, 0) + want
+                S["weight"] += want * ITEM_WEIGHT
+                added += want
+            S["gather_mode"] = modes[(i + 1) % len(modes)]
+    with _LOCK:
+        if S.get("gather_gen") != gen:
+            return 0, {"error": "canceled", "message": "Another command replaced this action.",
+                       "gained": added, "target": MAX_PER_PASS, "cost": _cost()}
+        stopped = S["in_progress"] is None
+        S["in_progress"] = None
+        S["gather_mode"] = None
+        S["tool"][name] -= 1
+        if stopped:
+            return 0, {"result": "stopped", "gained": added, "target": MAX_PER_PASS,
+                       "message": "Gathering stopped before reaching the goal.", "cost": _cost()}
+        return 0, {"result": "completed", "gained": added, "target": MAX_PER_PASS, "cost": _cost()}
+
+
 def _gather_post(body):
     b = body if isinstance(body, dict) else {}
     name = str(b.get("displayName") or "")
     room = int((S["max_weight"] - S["weight"]) / ITEM_WEIGHT)
     gained = min(MAX_PER_PASS, room)
+    if S.get("gather_yield") is not None:   # 소모품·채집지 사정으로 100개보다 적게 드는 회
+        gained = min(gained, max(0, int(S["gather_yield"])))
     S["bag"][name] = S["bag"].get(name, 0) + gained
     S["weight"] += gained * ITEM_WEIGHT
     S["tool"][name] -= 1
     stopped = S["in_progress"] is None    # stop_action 이 그 사이 들어왔으면
     S["in_progress"] = None
-    if gained < MAX_PER_PASS:
-        return 0, {"error": "overweight", "message": "채집 도중 가방 무게가 찼습니다", "gained": gained, "target": MAX_PER_PASS, "cost": _cost()}
+    reply = gained if S.get("gather_reply") is None else int(S["gather_reply"])   # 회신이 가방과 어긋나는 경우
+    if gained < MAX_PER_PASS and gained == room:
+        return 0, {"error": "overweight", "message": "채집 도중 가방 무게가 찼습니다", "gained": reply, "target": MAX_PER_PASS, "cost": _cost()}
+    gained = reply
     if stopped:
         return 0, {"result": "stopped", "gained": gained, "target": MAX_PER_PASS, "message": "정지됨", "cost": _cost()}
     return 0, {"result": "completed", "gained": gained, "target": MAX_PER_PASS, "cost": _cost()}
@@ -238,7 +338,9 @@ def _respond(command: str, body):
                    "Tutorial": {"IsPlaying": False}, "Scenario": {"IsInScenario": bool(S.get("scenario")), "IsSequencePlaying": False},
                    "Performance": _perf_row(),
                    "Interaction": {"HasTarget": False, "AvailableInteractionType": "None", "TargetKind": "None"},
-                   "Mode": {"MainButtonState": "Stop" if S.get("in_progress") else "Hide",
+                   "Mode": {"MainButtonState": ((S.get("gather_mode") or "Stop")
+                                                if S.get("in_progress") == "gathering" else
+                                                "Stop" if S.get("in_progress") else "Hide"),
                             "MountPartState": "Mounted" if S.get("mounted") else "None",   # set_state(mounted=True) — 탈것 탑승 중 흉내
                             "SitState": "None", "IsPlayingMiniGame": False, "IsHousingEditMode": False}}
     if command == "get_my_info":
@@ -257,6 +359,8 @@ def _respond(command: str, body):
         return 0, {"CurrentInventoryWeight": int(S["weight"]), "CurrentInventoryWeightAsDecimal": round(S["weight"], 1),
                    "MaxInventoryWeight": int(S["max_weight"]), "MaxInventoryWeightAsDecimal": S["max_weight"]}
     if command == "get_items":
+        # 몸 {"name": X} — 실물은 비슷한 이름도 같이 준다(「통나무」 → 「부드러운 통나무」 포함, 실측). 부분 일치로 흉내낸다
+        flt = str(b.get("name") or "") if isinstance(body, dict) else ""
         out = []
         for n, c in S["bag"].items():
             if c > 0:
@@ -265,7 +369,7 @@ def _respond(command: str, body):
         for n, c in S["storage"].items():
             if c > 0:
                 out.append({"DisplayName": n, "Category": "Ingredient", "CategoryDisplayName": "재료", "Count": c, "Location": "account_storage", "IsLocked": False})
-        return 0, out
+        return 0, [x for x in out if not flt or flt in x["DisplayName"]]
     if command == "get_craftable_items":
         items = []
         for name, (per, ings) in _CRAFT.items():
@@ -324,6 +428,7 @@ def _respond(command: str, body):
         if S.get("combat"):
             return 0, {"status": "rejected", "error": "not_available_on_combat", "message": "전투 중입니다"}
         # 실제 게임처럼 곧바로 돌아오고, 연주는 get_activity.Performance 로 보인다 (stop_action 이 같은 슬롯을 멈춘다)
+        _preempt()      # 칸으로 도는 채집은 연주가 갈아치운다 (미검증 — 흉내)
         S["perf"] = {"title": title, "instrument": inst, "loop": False,
                      "ends_at": time.time() + DEMO_SCORE_SEC, "total": DEMO_SCORE_SEC}
         return 0, {"status": "accepted"}
@@ -339,6 +444,12 @@ def _respond(command: str, body):
         if S.get("perf"):
             S["perf"] = None
             return 0, {"message": "연주를 정지했습니다"}
+        if S["in_progress"] == "gathering" and S.get("gather_mode") is not None:
+            # 칸으로 도는 채집 — 실측: MainButtonState 가 Hide(채집지 사이 이동 중)면 거절, Stop 이면 받아들인다
+            if S["gather_mode"] == "Hide":
+                return 0, {"error": "invalid_state", "message": "No stoppable action is in progress right now."}
+            S["in_progress"] = None
+            return 0, {"message": "Stop confirmed; no stoppable action remains."}
         if S["in_progress"]:
             S["in_progress"] = None
             return 0, {"message": "정지했습니다"}
@@ -348,6 +459,9 @@ def _respond(command: str, body):
     if command == "execute_gathering":   # 지연 없는 경로 (FAST) — 지연이 있으면 respond() 가 잠금을 놓고 처리한다
         pre = _gather_pre(body)
         return pre if pre is not None else _gather_post(body)
+
+    if command in ("execute_crafting", "execute_altering", "complete_altering_work"):
+        _preempt()      # 칸으로 도는 채집은 다른 실행 명령이 갈아치운다 (미검증 — 흉내)
 
     if command == "execute_crafting":
         name = str(b.get("displayName") or "")

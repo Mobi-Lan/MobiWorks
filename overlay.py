@@ -809,7 +809,7 @@ def panel_rows(state, alter, settings) -> dict:
             sm = it.get("summary") if isinstance(it.get("summary"), dict) else {}
             name, detail = str(it.get("name") or ""), f"{int(sm.get('count') or 0)}항목"
         elif it.get("type") == "gather":
-            name, detail = str(it.get("name") or ""), f"{int(it.get('target') or 0)}개"
+            name, detail = str(it.get("name") or ""), f"{int(it.get('target') or 0)}개"   # 채집은 개수 (N3)
         elif it.get("type") == "collect":
             name, detail = str(it.get("facility") or it.get("name") or ""), f"{int(it.get('count') or 0)}건"
         elif it.get("type") in ("play", "notify"):   # 연주·알림 — 회수가 없다. 종류 배지 글자를 오른칸에
@@ -1261,14 +1261,108 @@ def run_started_at(events) -> float:
     return t
 
 
-def offset_band_pos(client, off, band_w: int, band_h: int = BAND_H) -> tuple:
+def offset_band_pos(client, off, band_w: int, band_h: int = BAND_H, screens=None,
+                    min_w: int = 0, min_h: int = 0) -> tuple:
     """사용자가 끌어 둔 자리 — **게임 클라이언트 영역 기준 상대 위치(오프셋)** 로 따라간다.
 
     화면 절대 좌표를 저장하면 게임 창이 움직였을 때 따라갈 수 없다. `(밴드 좌상단 − 클라이언트 좌상단)`
-    을 저장해 두고 매번 더한다. 게임 창 **크기**가 바뀌어 밴드가 클라이언트 밖으로 나가면 안쪽으로 당긴다."""
-    cx, cy, cw, ch = (int(v) for v in client)
+    을 저장해 두고 매번 더한다.
+
+    **클라이언트 영역 안으로 끌어오지 않는다** (1.0.7 제보). 게임 제목줄 위·게임 창 옆·다른 모니터에
+    놓아도 그 자리를 지킨다 — 예전에는 40ms 마다 게임 안쪽으로 되돌아가 「위치가 초기화된다」로 보였다.
+    `screens`(모니터 사각형들)를 주면 **어느 모니터에든 조금은 보이게**(`keep_visible`)만 한다."""
+    cx, cy, _cw, _ch = (int(v) for v in client)
     ox, oy = (int(v) for v in off)
-    return clamp_pos(cx + ox, cy + oy, band_w, band_h, cw, ch, cx, cy)
+    x, y = cx + ox, cy + oy
+    if screens:
+        x, y = keep_visible(x, y, band_w, band_h, screens, min_w, min_h)
+    return x, y
+
+
+def start_expanded(settings) -> bool:
+    """밴드가 뜰 때 끝 ▾ 판(대기 목록 + 가공)을 펼쳐 둘지.
+
+    **지난번에 손으로 ▾ 를 눌러 둔 상태**(`overlay_expand_last`)가 있으면 그것, 없으면 「펼침 기본값」
+    (`on` 만 펼침 — `error` 는 평소 접혀 있다가 오류가 있을 때 `_sync_expand` 가 따로 편다)."""
+    s = settings if isinstance(settings, dict) else {}
+    last = str(s.get("overlay_expand_last") or "")
+    if last in ("on", "off"):
+        return last == "on"
+    return str(s.get("overlay_expand") or "off") == "on"
+
+
+# 밴드가 **스스로** 정하는 값. 설정 탭은 이 넷을 보내지 않는다 — 자리는 ⋮⋮ 끌기·🔒·「위치 초기화」만 바꾼다
+BAND_POS_KEYS = ("overlay_x", "overlay_y", "overlay_off_x", "overlay_off_y")
+# 밴드만 쓰는 값 전부 — 자리 + 마지막 ▾ 손 조작. 설정 저장이 되돌려 주는 옛 값으로 갈아 끼우지 않는다
+BAND_HELD_KEYS = BAND_POS_KEYS + ("overlay_expand_last",)
+# 밴드에서도, 설정 탭에서도 바뀌는 값 (🔒 · ↗ · ⋮⋮ 끌기가 끄는 자동 배치)
+BAND_TOGGLE_KEYS = ("overlay_lock", "overlay_click_through", "overlay_follow_game")
+OWN_GRACE_SEC = 3.0    # 밴드가 바꾼 뒤 이 시간 안에 옛 값이 오면 늦게 도착한 설정으로 본다
+
+
+def merge_band_settings(cur: dict, incoming: dict, own: dict, now: float) -> dict:
+    """`apply()` 가 받은 설정을 **덮지 않고 합친다** (1.0.7 제보: 끌어 둔 자리가 되돌아간다).
+
+    서버는 설정을 저장할 때마다(`/api/settings`·`/api/overlay`) 파일에서 **통째로** 읽은 값을 준다.
+    그 사이 밴드가 끌기를 끝내 자리를 바꿨으면, 먼저 읽힌 그 설정에는 옛 자리가 들어 있다 — 그대로
+    갈아 끼우면 방금 놓은 밴드가 옛 자리로 튄다. 그래서:
+      · 자리(`BAND_POS_KEYS`) — 밴드가 들고 있는 값이 기준이다. 처음 받을 때만 설정에서 가져온다.
+      · 밴드에서도 바뀌는 스위치(`BAND_TOGGLE_KEYS`) — 밴드가 방금(`OWN_GRACE_SEC` 안) 바꾼 키에
+        **바꾸기 전 값**이 오면 늦게 도착한 설정이다 → 밴드 값을 지킨다. 다른 값이면 사용자가 탭에서 바꾼 것이다.
+    `own` 은 제자리에서 고친다 (다 쓴 기록은 지운다)."""
+    out = dict(incoming or {})
+    cur = cur or {}
+    for k in BAND_HELD_KEYS:
+        if k in cur:
+            out[k] = cur[k]
+    for k in BAND_TOGGLE_KEYS:
+        rec = own.get(k)
+        if not rec:
+            continue
+        before, mine, t = rec
+        if now - t > OWN_GRACE_SEC:
+            own.pop(k, None)
+            continue
+        if k in out and out[k] == before and before != mine:
+            out[k] = mine                    # 늦게 온 옛 값 — 밴드가 바꾼 값을 지킨다
+        elif out.get(k) == mine:
+            own.pop(k, None)                 # 저장된 값이 따라잡았다
+        else:
+            own.pop(k, None)                 # 사용자가 다른 값으로 바꿨다 — 그쪽이 이긴다
+    return out
+
+
+VIS_MIN_W = 48     # 밴드가 모니터 안에 남아 있어야 하는 최소 폭 (px, 배율 1 기준) — ⋮⋮ 를 잡을 만큼
+VIS_MIN_H = 16     # 같은 뜻의 높이
+
+
+def keep_visible(x: int, y: int, w: int, h: int, screens, min_w: int = 0, min_h: int = 0) -> tuple:
+    """(x, y) 를 되도록 그대로 둔다. **어느 모니터와도 `min_w × min_h` 만큼 겹치지 않을 때만**
+    가장 가까운 모니터 쪽으로 그만큼만 당긴다.
+
+    화면 밖으로 완전히 나간 밴드는 되찾을 길이 없다(관통이 켜져 있으면 더 그렇다). 그러나 일부가
+    걸쳐 있는 것은 사용자가 일부러 놓은 자리다 — 건드리지 않는다. 가상 화면(모든 모니터를 둘러싼
+    사각형)이 아니라 **모니터 하나하나**를 본다: 모니터 크기가 다르면 사각형 안인데도 아무 모니터에도
+    안 보이는 빈 모서리가 생긴다."""
+    x = int(x); y = int(y); w = max(1, int(w)); h = max(1, int(h))
+    mw = max(1, min(w, int(min_w) or VIS_MIN_W))
+    mh = max(1, min(h, int(min_h) or VIS_MIN_H))
+    rects = [tuple(int(v) for v in r) for r in (screens or []) if r and int(r[2]) > 0 and int(r[3]) > 0]
+    if not rects:
+        return x, y
+    for sx, sy, sw, sh in rects:
+        vis_w = min(x + w, sx + sw) - max(x, sx)
+        vis_h = min(y + h, sy + sh) - max(y, sy)
+        if vis_w >= min(mw, sw) and vis_h >= min(mh, sh):
+            return x, y
+    best = None
+    for sx, sy, sw, sh in rects:
+        nx = min(max(x, sx - w + mw), sx + sw - mw)
+        ny = min(max(y, sy - h + mh), sy + sh - mh)
+        d = (nx - x) ** 2 + (ny - y) ** 2
+        if best is None or d < best[0]:
+            best = (d, nx, ny)
+    return best[1], best[2]
 
 
 def band_offset(pos, client) -> tuple:
@@ -1733,6 +1827,26 @@ class _U32:
         except Exception:
             return None
 
+    def monitors(self) -> list:
+        """모니터마다 (x, y, w, h) — 밴드가 「어느 모니터에든 조금은 보이는가」를 볼 때 쓴다(`keep_visible`).
+        못 읽으면 빈 목록 (호출자가 가상 화면 한 칸으로 떨어진다)."""
+        out: list = []
+        try:
+            proc_t = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HANDLE, wintypes.HDC,
+                                        ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
+
+            def cb(_mon, _dc, r, _l):
+                rc = r.contents
+                w, h = int(rc.right - rc.left), int(rc.bottom - rc.top)
+                if w > 0 and h > 0:
+                    out.append((int(rc.left), int(rc.top), w, h))
+                return True
+            proc = proc_t(cb)      # 부르는 동안 살아 있어야 한다 (지역 변수로 붙잡아 둔다)
+            self.u.EnumDisplayMonitors(None, None, proc, 0)
+        except Exception:
+            return []
+        return out
+
 
 class Overlay:
     """밴드 창 하나 + 펼침 판 + 오류 토스트. 전부 한 Tk 스레드 안에 있다."""
@@ -1760,6 +1874,12 @@ class Overlay:
         # 「위치 초기화」 요청 — 서버 스레드가 깃발만 세우고 Tk 스레드(`_tick_ui`)가 집는다.
         # 다른 스레드에서 `root.after` 를 부르지 않는다 (Tk 는 만든 스레드에서만 만진다).
         self._reset_pending = False
+        # 설정 탭에서 「위치 잠금」을 켰다 — 다음 따라가기(Tk 스레드)가 지금 자리를 오프셋으로 굳힌다
+        self._lock_capture = False
+        # 설정 탭에서 「펼침 기본값」을 바꿨다 — 다음 틱(Tk 스레드)이 그 값대로 판을 펼치거나 접는다
+        self._expand_pending: str | None = None
+        # 밴드가 스스로 바꾼 설정 {키: (바꾸기 전, 바꾼 값, 시각)} — 늦게 도착한 옛 설정이 되돌리지 못하게 (`apply`)
+        self._own: dict = {}
         self._blit_said: set = set()    # UpdateLayeredWindow 가 실패한 창 — 한 번만 알린다
         self._ui_said: set = set()      # 40ms 루프에서 난 예외 — 종류마다 한 번만 알린다
 
@@ -1826,7 +1946,14 @@ class Overlay:
         (오버레이를 껐다 켜면 앱이 통째로 죽는다). 그래서 **Tk 는 프로세스당 한 번만** 만들고,
         끄기는 `_refresh` 가 창을 `withdraw()` 하는 것으로 끝낸다. 켜기는 다시 `deiconify()` 다."""
         with self._lock:
-            self._settings = dict(settings or {})
+            old = self._settings
+            new = merge_band_settings(old, settings, self._own, time.time())
+            self._settings = new
+            if old:   # 처음 받는 설정은 「바뀜」이 아니다
+                if new.get("overlay_lock") and not old.get("overlay_lock"):
+                    self._lock_capture = True     # 밖(설정 탭)에서 잠갔다 — 지금 자리를 굳힌다 (`_sync_follow`)
+                if "overlay_expand" in old and new.get("overlay_expand") != old.get("overlay_expand"):
+                    self._expand_pending = str(new.get("overlay_expand") or "off")
         if self._settings.get("overlay_enabled") and not self._running:
             self.start(self._settings)   # 처음 켤 때만 Tk 를 만든다
 
@@ -1983,7 +2110,7 @@ class Overlay:
         self._look_dashed = False
         self._lwa_said: set = set()
         self._cursors: dict = {}
-        self._expanded = str(self._cfg("overlay_expand", "off")) == "on"   # 밴드 끝 ▾ (대기 목록 + 가공)
+        self._expanded = start_expanded(self._settings)   # 밴드 끝 ▾ (대기 목록 + 가공) — 지난번 손 조작 > 펼침 기본값
         self._aexpanded = False                                            # 가공 뒤 ▾ (시설 칸)
         self._drag = None
         self._flash_until = 0.0
@@ -2057,6 +2184,31 @@ class Overlay:
         if vs:
             return vs
         return 0, 0, self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+
+    SCREENS_SEC = 2.0     # 모니터 목록은 이만큼 기억한다 (40ms 마다 훑을 까닭이 없다)
+
+    def _screens(self) -> list:
+        """모니터 사각형들 — 못 읽으면 가상 화면 한 칸(`_screen_box()`)."""
+        now = time.time()
+        cache = getattr(self, "_screens_cache", None)
+        if cache and now - cache[0] < self.SCREENS_SEC:
+            return cache[1]
+        u = getattr(self, "u", None)
+        mons = []
+        if u is not None and hasattr(u, "monitors"):
+            try:
+                mons = list(u.monitors() or [])
+            except Exception:
+                mons = []
+        if not mons:
+            mons = [self._screen_box()]
+        self._screens_cache = (now, mons)
+        return mons
+
+    def _visible_pos(self, x: int, y: int) -> tuple:
+        """(x, y) 를 되도록 그대로 — 어느 모니터에든 ⋮⋮ 를 잡을 만큼은 보이게만 (`keep_visible`)."""
+        return keep_visible(x, y, self._width or 200, self.px(BAND_H), self._screens(),
+                            self.px(VIS_MIN_W), self.px(VIS_MIN_H))
 
     def _start_pos(self) -> tuple:
         ox, oy, sw, sh = self._screen_box()
@@ -2201,13 +2353,30 @@ class Overlay:
         #   · 자동 배치(follow_game) 중 → 폭이 바뀌면 **가운데로 다시** 잡는다
         #   · 끌어 둔 자리 → **좌측 좌표를 그대로 두고 오른쪽으로만** 늘어난다
         # 끌면 자동 배치가 꺼지므로(_drag_end) 두 규칙이 서로 싸우지 않는다.
+        bh = self.px(BAND_H)
+        if getattr(self, "_lock_capture", False):
+            # 설정 탭에서 「위치 잠금」을 켰다 — 밴드의 🔒 처럼 **잠그기 직전 자리**를 오프셋으로 굳힌다.
+            # 굳히지 않으면 저장돼 있던 오프셋(초기화 뒤 0,0)으로 튄다. 게임이 보일 때까지 미뤄 둔다.
+            self._lock_capture = False
+            if self._cfg("overlay_follow_game", True):
+                bx, by = game_band_pos(rect, w, bh)
+            else:
+                bx, by = offset_band_pos(rect, self._offset(), w, bh, self._screens(),
+                                         self.px(VIS_MIN_W), self.px(VIS_MIN_H))
+            ox, oy = band_offset((bx, by), rect)
+            with self._lock:
+                self._settings["overlay_off_x"], self._settings["overlay_off_y"] = ox, oy
+            self._call("save_offset", ox, oy)
         if self._cfg("overlay_lock", False):
             # 좌측 고정 — 끌어 둔 자리(오프셋)를 그대로 쓴다. 폭이 늘어도 왼쪽은 안 움직인다
-            x, y = offset_band_pos(rect, self._offset(), w, self.px(BAND_H))
+            x, y = offset_band_pos(rect, self._offset(), w, bh, self._screens(),
+                                   self.px(VIS_MIN_W), self.px(VIS_MIN_H))
         elif self._cfg("overlay_follow_game", True):
-            x, y = game_band_pos(rect, w, self.px(BAND_H))          # 자동 배치 (가운데 위)
+            x, y = game_band_pos(rect, w, bh)          # 자동 배치 (가운데 위)
         else:
-            x, y = offset_band_pos(rect, self._offset(), w, self.px(BAND_H))   # 끌어 둔 자리
+            # 끌어 둔 자리 — 게임 안쪽으로 끌어오지 않는다 (제목줄·게임 밖·다른 모니터도 그대로)
+            x, y = offset_band_pos(rect, self._offset(), w, bh, self._screens(),
+                                   self.px(VIS_MIN_W), self.px(VIS_MIN_H))
         if (x, y) != self._pos:
             self._pos = (x, y)
             self._blit()      # 자리는 blit 이 정한다 (geometry 는 UpdateLayeredWindow 와 싸운다)
@@ -2762,6 +2931,7 @@ class Overlay:
         self._aexpanded = not self._aexpanded
         if self._aexpanded:
             self._expanded = False
+            self._remember_expand()     # 대기 판이 같이 접혔다 — 다음 실행에도 접힌 채로
         self._redraw_now()
 
     def _on_expand(self, _e=None):
@@ -2770,6 +2940,7 @@ class Overlay:
         self._day_open = False        # 대기 구역으로 연 판에는 7일 표가 없다 · 닫을 때도 같이 접는다
         if self._expanded:
             self._aexpanded = False
+        self._remember_expand()
         self._redraw_now()
 
     def _on_day(self, _e=None):
@@ -2778,7 +2949,26 @@ class Overlay:
         self._expanded = self._day_open
         if self._expanded:
             self._aexpanded = False
+        self._remember_expand()
         self._redraw_now()
+
+    def _apply_expand_pending(self) -> None:
+        """「펼침 기본값」을 탭에서 바꿨다 — Tk 스레드(`_tick_ui`)에서 그 값대로 판을 펼치거나 접는다.
+        바꾼 기본값이 **다음 손 조작 전까지** 기준이다 — 지난번 손 조작 기록을 지워 다음 실행도 이 값으로 뜬다."""
+        mode, self._expand_pending = self._expand_pending, None
+        self._expanded = mode == "on"
+        if self._expanded:
+            self._aexpanded = False
+        if self._cfg("overlay_expand_last", ""):
+            self._set_setting("overlay_expand_last", "")
+        self._redraw_now()
+
+    def _remember_expand(self) -> None:
+        """▾ 를 손으로 열고 닫은 상태를 남긴다 — 다음 실행에 이 상태로 뜬다 (`start_expanded`).
+        같은 값이면 쓰지 않는다 (누를 때마다 설정 파일을 다시 쓰지 않게)."""
+        v = "on" if self._expanded else "off"
+        if self._cfg("overlay_expand_last", "") != v:
+            self._set_setting("overlay_expand_last", v)
 
     # ── 컨트롤 줄 손잡이 (펼친 판 맨 아래줄) ──
     FRONT_GAP = 1.5      # 이 시간 안에 다시 눌러도 창을 또 띄우지 않는다
@@ -2951,8 +3141,9 @@ class Overlay:
         # **`_pos`·`_width` 를 쓴다.** 창 자리·크기는 이제 `blit` 이 정하므로 Tk 가 아는
         # `winfo_x/width` 는 뒤처져 있고, 그 값으로 `geometry` 를 부르면 창이 잘못된 크기로
         # 줄어 레이어드 그림이 **잘려 보인다** (손 떼면 밴드가 반쯤 사라진다).
-        ox, oy, sw, sh = self._screen_box()      # 주 모니터가 아니라 **모니터 전부** 안으로
-        x, y = clamp_pos(self._pos[0], self._pos[1], self._width or 200, self.px(BAND_H), sw, sh, ox, oy)
+        # 놓은 자리를 그대로 쓴다 — 일부가 화면 밖·게임 밖이어도. **어느 모니터에든 ⋮⋮ 를 잡을 만큼
+        # 보이지 않을 때만** 그만큼 당긴다 (예전에는 화면 안으로 통째로 끌어와 가장자리에 놓으면 튀었다)
+        x, y = self._visible_pos(self._pos[0], self._pos[1])
         self._pos = (x, y)
         self._blit()
         self._place_children()
@@ -2968,6 +3159,8 @@ class Overlay:
                 self._set_setting("overlay_follow_game", False)   # 「가운데 위 자동 배치」 → 끌어 둔 자리
             self._say(f"⋮⋮ 로 옮겼습니다 — 게임 기준 오프셋 ({ox},{oy}) 로 계속 따라갑니다")
         else:
+            with self._lock:     # 밴드가 들고 있는 자리가 기준이다 (`merge_band_settings`)
+                self._settings["overlay_x"], self._settings["overlay_y"] = x, y
             self._call("save_pos", x, y)
 
     # ---- 40ms: 클릭 통과 예외 · 깜박임 ----
@@ -2989,6 +3182,8 @@ class Overlay:
             if self._reset_pending:     # 「위치 초기화」 — 서버 스레드가 세운 깃발을 **여기(Tk 스레드)서** 집행한다
                 self._reset_pending = False
                 self._apply_reset_pos()
+            if getattr(self, "_expand_pending", None) is not None:   # 「펼침 기본값」을 방금 바꿨다 — 그 값대로 바로 보여 준다
+                self._apply_expand_pending()
             if self._sync_dpi():      # 다른 배율의 모니터로 옮겨 갔다 — 글꼴·치수를 다시 잡는다
                 self._redraw_now()
             self._sync_through()
@@ -3083,6 +3278,7 @@ class Overlay:
     # ---- 전역 단축키 (등록도 루프도 전용 스레드) ----
     def _set_setting(self, key: str, value) -> None:
         with self._lock:
+            self._own[key] = (self._settings.get(key), value, time.time())
             self._settings[key] = value
         self._call("save_setting", key, value)
 

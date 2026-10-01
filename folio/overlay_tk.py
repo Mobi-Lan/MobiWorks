@@ -116,6 +116,13 @@ B_UNKNOWN = "#7c5735"
 # 경고 알약 (탈것 탑승 중) — 미니 창의 --pink(#ff6f9c) 와 같은 색, 바탕은 그 색을 카드 바탕에 옅게 얹은 값
 WARN_PINK = "#ff6f9c"
 WARN_BG = "#2a1826"
+# 방송 중 배지 「방송 · 신청 n」 (시안 C · 오버레이 밴드) — 분홍 점 깜빡 + 분홍 테 알약. 바탕·테는 시안의 rgba 를 카드 바탕에 얹은 값
+BC_DOT = "#e88aa6"                    # 점 (rgba 아님)
+BC_FG = "#f5b8c8"                     # 글자
+BC_BG = "#2c2533"                     # rgba(232,138,166,.14) on #0d1420
+BC_LINE = "#7b4f63"                   # rgba(232,138,166,.5) on #0d1420
+# 시안의 밴드는 줄여 그린 그림이다 (띠 20 · 실제 밴드 26) — 배지 치수는 같은 비율(×1.3)로 옮긴다
+BC_SCALE = DESIGN_STRIP / 20.0
 FONT = "Malgun Gothic"
 MONO = "Consolas"
 
@@ -229,6 +236,7 @@ class Overlay:
         # 악기 고정 — 서버 설정 `inst_pin` 의 거울. 비어 있지 않으면 모든 곡이 이 악기로 시작한다.
         # 값은 서버에만 있다: 여기서는 `queue_state()["instPin"]` 을 읽어 그리고, 누르면 `set_cfg` 로 적는다.
         self._inst_pin = ""
+        self._bc = {"on": False, "wait": 0}   # 방송 — 서버 대기열 답의 `bc` (켜짐 · 대기 신청 수)
         self._repeat = "off"                 # off · one · all (상세창·밴드의 반복 단추)
         self._hint = ("", 0.0)               # 단추를 누르면 잠깐 뜨는 안내 (눌러도 뭐가 바뀌었는지 안 보였다)
         self._dragging = ""                  # 지금 끌고 있는 창 ("band" · "player") — 끄는 동안은 자리를 다시 계산하지 않는다
@@ -849,6 +857,8 @@ class Overlay:
                         self._pview = ("queue", None)    # 재생을 시작하면 현재 재생목록을 보여 준다
                         self._pscroll = 0
                     self._mirror_play_cfg(q)
+                    bc = q.get("bc") if isinstance(q.get("bc"), dict) else {}
+                    self._bc = {"on": bool(bc.get("on")), "wait": int(bc.get("wait") or 0)}
                     self._qst = {"items": q.get("items") or [], "pos": int(q.get("pos") or -1),
                                  "src": q.get("src") or "", "name": q.get("name") or "",
                                  "next": q.get("next"), "gen": gen, "rev": int(q.get("rev") or 0)}
@@ -2135,6 +2145,12 @@ class Overlay:
         mw_sz, mw_h = dk(11), dk(18)                  # 경고 알약 — 글자 11 · 높이 18 (제목 줄 40 안에 앉는다)
         w_mount = (g.measure(mount, FONT, mw_sz, True) + dk(16)) if mount else 0
         w_clock = g.measure(clock, MONO, m_sz)
+        # 방송 중 — 곡명 바로 옆 배지 「방송 · 신청 n」 (시안 C). 크기는 시안 값 × BC_SCALE
+        bc_on = bool(self._bc.get("on"))
+        bc_txt = f"방송 · 신청 {int(self._bc.get('wait') or 0)}" if bc_on else ""
+        bc_sz, bc_h, bc_dot = dk(9 * BC_SCALE), dk(18 * BC_SCALE), dk(7 * BC_SCALE)
+        bc_pad, bc_gap = dk(7 * BC_SCALE), dk(4 * BC_SCALE)
+        w_bc = (bc_pad + bc_dot + bc_gap + g.measure(bc_txt, FONT, bc_sz, True) + bc_pad) if bc_on else 0
 
         # 연주 중이 아니어도 밴드는 그대로 떠 있는다. 폭은 상세창과 같게 맞춘다.
         d_btn = dk(DESIGN_BTN)
@@ -2142,7 +2158,7 @@ class Overlay:
         pill_w = px(DESIGN_PANEL_W)                   # 상세창과 같은 폭으로 고정
         gw = max(dk(60), pill_w - pad_l - pad_r2 - dk(9) - w_clock - dk(9) - 3 * bd - 2 * dk(9))
         avail1 = pill_w - pad_l - pad_r1 - (dk(11) + w_badge if badge else 0) - dk(11) - eq_w \
-            - (dk(11) + w_mount if mount else 0)      # 탈것 알약도 제목 줄에서 뺀다
+            - (dk(11) + w_mount if mount else 0)             - (dk(8) + w_bc if bc_on else 0)          # 방송 배지도 제목 줄에서 뺀다
         if w_title > avail1:                          # 넘치면 제목을 줄인다 (폭은 고정이다)
             title = self._fit(g, title, FONT, t_sz, True, max(dk(60), avail1))
             w_title = g.measure(title, FONT, t_sz, True)
@@ -2228,6 +2244,16 @@ class Overlay:
                 x = cx + pad_l
                 g.text(x, y1, title, FONT, t_sz, "#ffffff", bold=True)
                 x += w_title + dk(11)
+                if bc_on:                        # 「방송 · 신청 n」 — 누르면 방송 창을 앞으로
+                    x -= dk(11) - dk(8)          # 시안: 곡명과 배지 사이 8
+                    self._card(g, x, y1 - bc_h / 2.0, w_bc, bc_h, bc_h // 2, BC_BG, BC_LINE, 255)
+                    lit = (time.time() % 1.4) < 0.7          # 1.4초 깜빡임 (시안 animation:blink 1.4s)
+                    dc = BC_DOT if lit else _mix(BC_DOT, BC_BG, 0.75)
+                    g.ellipse(int(x + bc_pad), int(y1 - bc_dot / 2.0), bc_dot, bc_dot, dc)
+                    g.text(x + bc_pad + bc_dot + bc_gap, y1, bc_txt, FONT, bc_sz, BC_FG, bold=True)
+                    if self._ops.get("bc_front"):
+                        self._hit(x, y1 - bc_h / 2.0, w_bc, bc_h, lambda: self._bg(self._ops["bc_front"]))
+                    x += w_bc + dk(11)
                 if badge:
                     g.text(x, y1, badge, FONT, b_sz, P_SUB)
                     x += w_badge + dk(11)
@@ -2519,6 +2545,8 @@ class Overlay:
             self._hint[0] if self._hint[1] > now else "",
             self._visible, self._gone, self._player, self._popen, self._auto, self._dragging,
             self._client, self._pxy, self._xy, d.get("artist"), bool(d.get("known", True)),
+            # 방송 배지 — 켜짐·대기 수, 켜져 있으면 깜빡임 차례
+            bool(self._bc.get("on")), self._bc.get("wait"), int(now / 0.7) if self._bc.get("on") else 0,
             bool(d.get("loop")), cfg.get("ov_scale"), cfg.get("ov_alpha"))
 
     def _follow(self) -> None:

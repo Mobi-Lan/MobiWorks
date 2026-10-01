@@ -64,6 +64,7 @@ sys.path.insert(0, HERE)   # `import library` 가 folio/library.py 를 집는다
 import cli_transport as cli   # noqa: E402
 import library as lib         # noqa: E402
 import store                  # noqa: E402
+import broadcast as _bc       # noqa: E402  방송 모드 방 상태 (저장소 뿌리의 broadcast.py)
 # **`store.get_cache` 를 쓰면 안 된다.** 이름은 같은데 모비웍스 것은 `cache_<kind>.json` 의
 # `{fetched_at, data}` 이고 여기가 기대하는 것은 `<kind>.json` 의 `{fetched_at, items}` 다.
 # 그래서 합치면서 `store.folio_cache` / `store.set_folio_cache` 로 갈랐다.
@@ -272,7 +273,8 @@ REMOTE_MAX_TRY = 5       # 이만큼 틀리면
 REMOTE_LOCK = 300.0      # 5분 잠근다
 # 「재생 조작만」일 때 밖에서 보낼 수 있는 것 — 여기 없는 POST 는 막는다.
 REMOTE_PLAY_OK = {"/api/play", "/api/stop", "/api/queue", "/api/queue/step", "/api/queue/at",
-                  "/api/queue/clear", "/api/queue/ask", "/api/queue/inst"}   # `/api/sync` 는 뺐다 — 폰은 PC 가 읽은 값만
+                  "/api/queue/clear", "/api/queue/ask", "/api/queue/inst",
+                  "/api/queue/next", "/api/queue/append"}   # `/api/sync` 는 뺐다 — 폰은 PC 가 읽은 값만
 # 범위가 「전부」여도 밖에서는 **절대** 안 되는 것들.
 #   * 이 PC 의 창·프로세스를 건드린다 (오버레이·연출 창·종료·업데이트 설치)
 #   * 밖으로 나가는 문 자체를 여닫는다 (터널·인증키·우편함·잠금 풀기) — 밖에서 열게 두면
@@ -999,7 +1001,9 @@ def _ov_ops() -> dict:
             # 새 연주가 보였을 때의 연출도 서버의 「연주 한 번에 카드 한 번」 문을 지난다
             "opening_seen": opening_seen,
             # 주변 연주도 서버가 한 번만 조회한다 — 미니 창과 오버레이가 같은 값을 본다
-            "near": near_state}
+            "near": near_state,
+            # 밴드 곡명 옆 「방송 · 신청 n」 배지를 누르면 방송 창을 앞으로 (없으면 새로 띄운다)
+            "bc_front": lambda: _bc.streamer("window", {})}
 
 
 def _ov_state() -> dict:
@@ -1375,7 +1379,10 @@ _Q = {"keys": [], "order": [], "pos": -1, "src": "", "name": "", "inst": {}, "ge
       # **요청 단위 회차 제한** (모비웍스 「연주」 카드 — 큐에 담긴 요청은 정한 회차만큼만 재생한다).
       #   passes: None = 폴리오 제 설정(repeat·shuffle)대로 · N = 목록을 **N번 돌고 멈춘다** (repeat·shuffle 무시)
       #   pass  : 지금 몇 번째 회차인가 (1부터)
-      "passes": None, "pass": 1}
+      "passes": None, "pass": 1,
+      # 방송 신청으로 끝에 담긴 곡 — key → 신청자 이름 (`queue_append`). 화면의 「· 신청 이름」 표시에만 쓴다.
+      # 게임 채팅·연주 인사로는 나가지 않는다 (`greet_render` 는 이 칸을 읽지 않는다).
+      "req": {}}
 SOLO_PASSES_MAX = 20     # 곡 하나·목록 회차 상한 (workqueue.PLAY_COUNT_MAX 와 같은 값)
 _NOW = {"playing": False, "title": "", "el": 0.0, "tot": 0.0, "loop": False, "inst": "",
         "at": 0.0, "ok": False, "error": "", "perf": {}, "start_at": None,
@@ -1469,7 +1476,8 @@ def _q_items() -> list:
         t = src.get("title") or k
         out.append({"key": k, "title": t, "song": src.get("song") or src.get("cleaned") or t,
                     "artist": src.get("artist") or "", "duration": dur.get(t), "ens": ens.get(k),
-                    "inst": _Q["inst"].get(k) or "", "missing": not src})
+                    "inst": _Q["inst"].get(k) or "", "missing": not src,
+                    "req": _Q["req"].get(k) or ""})
     return out
 
 
@@ -1490,7 +1498,9 @@ def queue_state() -> dict:
                 # 마지막으로 낸 연출 {song, inst, at} — 연출 페이지가 카드의 악기 줄을 여기서 다시 읽는다
                 "opening": dict(_OPENING_LAST),
                 # 탈것 탑승 중 (두 화면의 「탈것 탑승 중」 · 「내리면 재생」 표시)
-                "mounted": bool(_NOW.get("mounted")), "wait_mount": bool(_ENG.get("wait_mount"))}
+                "mounted": bool(_NOW.get("mounted")), "wait_mount": bool(_ENG.get("wait_mount")),
+                # 방송 — 본창 머리줄·오버레이 밴드의 「방송 · 신청 n」 (켜짐 · 대기 수)
+                "bc": _bc.ROOM.summary()}
 
 
 def _q_peek(items: list, pos: int, repeat) -> dict | None:
@@ -1531,6 +1541,7 @@ def queue_set(keys: list, start=None, src: str = "", name: str = "", insts: dict
     with _Q_LOCK:
         _Q["keys"] = keys
         _Q["inst"] = {str(k): str(v) for k, v in (insts or {}).items() if v}
+        _Q["req"] = {}                             # 새 대기열 — 옛 신청 표시는 걷는다
         _Q["src"], _Q["name"] = str(src or ""), str(name or "")
         cur = 0
         if isinstance(start, int):
@@ -2051,9 +2062,93 @@ def queue_resync_inst() -> dict:
     return {"ok": True, "resynced": True, "n": len(_Q["inst"])}
 
 
+def _q_new_with(key: str) -> None:
+    """빈 대기열을 곡 하나로 만든다 — 재생은 시작하지 않는다. `_Q_LOCK` 을 쥔 채 부른다."""
+    _Q["keys"], _Q["order"], _Q["pos"] = [key], [0], 0
+    _Q["src"], _Q["name"], _Q["inst"], _Q["req"] = "", "", {}, {}
+    _Q["passes"], _Q["pass"] = None, 1
+    _Q["gen"] += 1
+
+
+def _q_drop_others(key: str) -> None:
+    """대기열에서 `key` 의 줄을 걷는다 — **지금 곡 자리(pos)는 남긴다.** `_Q_LOCK` 을 쥔 채 부른다.
+
+    `keys` 에서도 실제로 지우고 `order` 의 번호를 다시 매긴다 (셔플을 켜고 끄면 `keys` 로 차례를 다시 만들므로
+    `order` 에서만 빼면 걷은 줄이 되살아난다)."""
+    keys, order, pos = _Q["keys"], _Q["order"], _Q["pos"]
+    drop = [j for j, i in enumerate(order) if j != pos and 0 <= i < len(keys) and keys[i] == key]
+    if not drop:
+        return
+    gone = {order[j] for j in drop}
+    new_order = [i for j, i in enumerate(order) if j not in drop]
+    remap, new_keys = {}, []
+    for i, k in enumerate(keys):
+        if i in gone:
+            continue
+        remap[i] = len(new_keys)
+        new_keys.append(k)
+    _Q["keys"] = new_keys
+    _Q["order"] = [remap[i] for i in new_order if i in remap]
+    _Q["pos"] = pos - sum(1 for j in drop if j < pos) if pos >= 0 else pos
+
+
+def queue_append(key, who: str = "", move: bool = False) -> dict:
+    """곡 하나를 **현재 대기열 끝**에 담는다 (방송 신청 승인 · 줄 메뉴 「현재 재생목록 끝에 담기」).
+
+    · 지금 곡은 끊지 않는다 — 차례(`order`)의 끝에 붙일 뿐이다. 셔플 중이어도 차례는 이미 섞인 순서이므로
+      끝에 붙이면 곧 **남은 차례의 끝**이다.
+    · 대기열이 비어 있으면 그 곡 하나로 대기열을 만들되 **재생은 시작하지 않는다** (`queue_set(play_now=False)` 와 같은 자리).
+    · `who` 는 신청자 이름 — `_Q["req"]` 에 적어 두고 `/api/queue` 줄의 `req` 로 나간다. 화면 표시에만 쓴다.
+    · `move=True`(줄 메뉴) 이면 이미 담긴 같은 곡을 **옮긴다** — 지금 곡이 아닌 줄은 걷고 끝에 하나만 둔다.
+      지금 곡 자체는 걷지 않는다(재생 중인 자리라서) — 그래서 지금 곡을 담으면 끝에 한 번 더 붙는다.
+      방송 신청(`move=False`)은 신청 하나가 한 번의 연주라 겹쳐도 그대로 붙인다.
+    답: `{ok, pos}` — pos 는 화면 차례 기준 1부터."""
+    key = str(key or "").strip()
+    if not key:
+        return {"ok": False, "error": "bad_request", "message": "곡 key 가 없습니다."}
+    who = str(who or "")[:40]
+    with _Q_LOCK:
+        if not _Q["keys"]:
+            _q_new_with(key)
+        else:
+            if move:
+                _q_drop_others(key)
+            _Q["keys"].append(key)
+            _Q["order"].append(len(_Q["keys"]) - 1)
+        if who:
+            _Q["req"][key] = who
+        _Q["rev"] += 1
+        pos = len(_Q["order"])
+    return {"ok": True, "pos": pos}
+
+
+def queue_insert_next(key) -> dict:
+    """곡 하나를 **지금 곡 바로 다음 차례**에 끼운다 (줄 메뉴 「다음에 재생」). 지금 곡은 끊지 않는다.
+
+    · 「다음」은 **재생 차례(`order`) 기준**이다 — 셔플 중이면 섞인 차례에서 지금 곡 바로 뒤.
+    · 이미 담긴 같은 곡은 **옮긴다** (`queue_append(move=True)` 와 같은 규칙) — 지금 곡이 아닌 줄은 걷고
+      다음 자리에 하나만 둔다. 지금 곡 자체를 고르면 다음 자리에 한 번 더 붙는다(한 번 더 듣기).
+    · 대기열이 비어 있으면 그 곡 하나로 대기열을 만들되 **재생은 시작하지 않는다** (`queue_append` 와 같다).
+    답: `{ok, pos}` — pos 는 화면 차례 기준 1부터."""
+    key = str(key or "").strip()
+    if not key:
+        return {"ok": False, "error": "bad_request", "message": "곡 key 가 없습니다."}
+    with _Q_LOCK:
+        if not _Q["keys"]:
+            _q_new_with(key)
+            at = 0
+        else:
+            _q_drop_others(key)
+            _Q["keys"].append(key)
+            at = _Q["pos"] + 1 if 0 <= _Q["pos"] < len(_Q["order"]) else 0
+            _Q["order"].insert(at, len(_Q["keys"]) - 1)
+        _Q["rev"] += 1
+    return {"ok": True, "pos": at + 1}
+
+
 def queue_clear() -> dict:
     with _Q_LOCK:
-        _Q.update(keys=[], order=[], pos=-1, src="", name="", inst={}, passes=None)
+        _Q.update(keys=[], order=[], pos=-1, src="", name="", inst={}, passes=None, req={})
         _Q["pass"] = 1
         _Q["gen"] += 1
         _Q["rev"] += 1
@@ -2081,6 +2176,7 @@ def now_state() -> dict:
     ask = _ENG["ask_at"] and (time.time() - _ENG["ask_at"] < ASK_NEXT_SEC)
     d["ask_next"] = {"on": bool(ask), "n": _ENG["ask_n"] if ask else 0,
                      "left": round(max(0.0, ASK_NEXT_SEC - (time.time() - _ENG["ask_at"])), 1) if ask else 0.0}
+    d["bc"] = _bc.ROOM.summary()                   # 방송 켜짐 · 대기 신청 수 (본창 머리줄 알약)
     return d
 
 
@@ -3347,6 +3443,10 @@ class H(SimpleHTTPRequestHandler):
             return _json(self, {"ok": True,
                                 "devices": [{k: v for k, v in x.items() if k != "token"}
                                             for x in store.get_devices()]})
+        if u.path == "/api/bc/state":  # 방송 창 — 방 상태 (밖에서는 read 범위부터 · 모비웍스 문이 거른다)
+            if not self._guard():
+                return _json(self, {"ok": False, "error": "forbidden"}, 403)
+            return _json(self, _bc.streamer("state", {}))
         if u.path == "/api/near":      # 주변 연주 (StartAt 으로 묶은 합주단) — 두 화면이 같은 값을 본다
             if not self._guard():
                 return _json(self, {"ok": False, "error": "forbidden"}, 403)
@@ -3679,6 +3779,16 @@ class H(SimpleHTTPRequestHandler):
         p = _read_json(self)
         if "_error" in p:
             return _json(self, {"ok": False, "error": "bad_request", "message": p["_error"]}, 400)
+        # ── 방송 (스트리머) — 밖(모바일 리모컨)에서는 모비웍스 문이 edit 범위부터만 넘긴다 (`FOLIO_EDIT_OK`) ──
+        # 글자로 적는다 — 길 뽑는 눈(tests/test_security_q1.py)이 이 길들을 전수 행렬에 넣는다.
+        if (u.path == "/api/bc/on" or u.path == "/api/bc/off" or u.path == "/api/bc/code" or u.path == "/api/bc/pl"
+                or u.path == "/api/bc/cfg" or u.path == "/api/bc/ok" or u.path == "/api/bc/no" or u.path == "/api/bc/block"):
+            r = _bc.streamer(u.path[len("/api/bc/"):], p)
+            return _json(self, r, 200 if r.get("ok") else (410 if r.get("error") == "ended" else 400))
+        if u.path == "/api/bc/window":    # 방송 창 열기·앞으로 — **이 PC 의 창**이라 밖에서는 안 된다
+            if self._is_remote():
+                return _json(self, {"ok": False, "error": "forbidden"}, 403)
+            return _json(self, _bc.streamer("window", p))
         if u.path == "/api/quit":     # 셸이 창을 닫을 때 정상 종료 요청 (taskkill 대신 → PyInstaller 임시폴더 정리됨)
             _json(self, {"ok": True})
             threading.Thread(target=_shutdown, daemon=True).start()
@@ -3714,6 +3824,14 @@ class H(SimpleHTTPRequestHandler):
             except (TypeError, ValueError):
                 return _json(self, {"ok": False, "error": "bad_request"}, 400)
             return _json(self, queue_play_index(i))
+        # 줄 메뉴 「다음에 재생」·「현재 재생목록 끝에 담기」 — 지금 곡은 끊지 않는다 · 비었으면 만들되 틀지 않는다
+        if u.path == "/api/queue/next" or u.path == "/api/queue/append":
+            k = p.get("key")
+            k = k if isinstance(k, str) else ""
+            r = queue_insert_next(k) if u.path == "/api/queue/next" else queue_append(k, move=True)
+            if not r.get("ok"):
+                return _json(self, r, 400)
+            return _json(self, {**queue_state(), "at": r["pos"]})   # at = 담긴 자리 (화면 차례 1부터)
         if u.path == "/api/queue/ask":    # 합주가 끝난 뒤의 물음에 답한다
             _ENG["ask_at"] = 0.0
             if p.get("go"):

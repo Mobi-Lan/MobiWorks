@@ -2,8 +2,8 @@
 /* 행 사이 여백 대신 구분선 (표 느낌) — .list 기본 gap 을 이 탭에서만 없앤다 */
 .list.gl{gap:0}
 /* 행마다 따로 도는 그리드라 auto·1fr 은 행마다 다르게 풀린다(헤더와 칸이 어긋난다) → 뒤 세 칸은 고정 폭 */
-/* 마지막 칸 260px: 스테퍼(110) + 안내(86) + 담기(48) + 간격 16 이 넘치지 않게 (248px 이면 낚시 행이 열 밖으로 삐져나왔다) */
-.rc.g{grid-template-columns:minmax(0,1fr) 88px 92px 260px;gap:10px;padding:0 14px;height:46px;
+/* 마지막 칸 300px: 스테퍼(110) + 안내(126 — 「3회 · 날개 15」 / 「가방 1,234 → 목표 1,484」 두 줄) + 담기(48) + 간격 16 */
+.rc.g{grid-template-columns:minmax(0,1fr) 88px 92px 300px;gap:10px;padding:0 14px;height:46px;
   border:0;border-bottom:1px solid var(--line);border-radius:0;cursor:default}
 /* 좁은 탭 카드(손잡이로 큐를 넓히면 460px 까지 내려간다)에서는 고정 열 합(428px)이 이름 열을 0px 로 뭉개고
    가로 스크롤이 생겼다 — 폭에 따라 덜 중요한 열부터 줄이고 이름 열에는 최소 폭을 남긴다 */
@@ -14,7 +14,12 @@
   .rc.g>*:nth-child(3){display:none}
   .gact .stepper{grid-template-columns:24px 46px 24px}
   .gact .gp{display:none}
-  .gact{grid-template-columns:auto auto}   /* 안내 문구를 숨기면 그 트랙도 같이 빼야 정렬이 유지된다 */
+  /* 아래 기본 `.gact` 규칙이 파일 뒤에 있어 같은 무게면 그쪽이 이긴다 — `.list.gl` 을 붙여 여기가 이기게 한다 */
+  .list.gl .gact{grid-template-columns:auto auto}   /* 안내 문구를 숨기면 그 트랙도 같이 빼야 정렬이 유지된다 */
+  /* 안내 열이 빠진 대신 이름 아래 작은 줄에 「3회 · 날개 15 · 가방 47 → 목표 297」 */
+  .rc.g:not(.hd){height:52px}
+  .rc.g .c1{flex-wrap:wrap;row-gap:1px;align-content:center}
+  .list.gl .rc.g .gsm{display:block}
 }
 @container tab (max-width:470px){
   /* 도구 열(2번째)까지 뺀다 — 도구가 없으면 이름이 흐려지고 담기가 잠기므로 구분은 남는다 */
@@ -31,10 +36,15 @@
 /* 캘 개수 → 담기: 오른쪽 정렬, 스테퍼는 행 높이(46px)에 맞춰 조금 낮게 */
 /* flex 로 두면 안내 문구 길이(「예상 1회」 45px vs 「진행 셀 수 없음」 84px)만큼 스테퍼가 밀려
    행마다 39px 어긋났다 → 고정 폭 3열 그리드로 문구 길이와 무관하게 정렬 */
-.gact{display:grid;grid-template-columns:auto 86px auto;align-items:center;justify-content:end;gap:8px;min-width:0}
+.gact{display:grid;grid-template-columns:auto 126px auto;align-items:center;justify-content:end;gap:8px;min-width:0}
 .gact .stepper{height:28px;grid-template-columns:26px 56px 26px}
-.gact .gp{font-size:11px;color:var(--sub2);white-space:nowrap;text-align:center;
-  overflow:hidden;text-overflow:ellipsis;min-width:0}
+/* 안내 두 줄 — 위 「3회 · 날개 15」(스테퍼 옆 · 진하게) · 아래 「가방 47 → 목표 297」 */
+.gact .gp{display:flex;flex-direction:column;gap:1px;font-size:11px;color:var(--sub2);white-space:nowrap;text-align:left;
+  overflow:hidden;min-width:0;line-height:1.2}
+.gact .gp b{font-weight:600;color:var(--fg2);overflow:hidden;text-overflow:ellipsis}
+.gact .gp i{font-style:normal;font-size:10.5px;overflow:hidden;text-overflow:ellipsis}
+/* 좁은 폭 전용 — 이름 아래 「3회 · 날개 15 · 가방 47 → 목표 297」 (넓은 폭은 오른쪽 안내 열이 같은 글을 적는다) */
+.rc.g .gsm{display:none;flex-basis:100%;font-size:10.5px;color:var(--sub2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
 .gact .pbtn{padding:5px 11px;font-size:12px}
 .stepper.off>*{opacity:.45}
 .stepper.off .v{font-family:var(--mono);font-size:14px;display:grid;place-items:center}

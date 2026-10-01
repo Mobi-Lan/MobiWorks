@@ -8,7 +8,9 @@ const DW={target:"root",q:"",type:"all",skill:null,chain:true,qty:new Map(),mode
   cart:false,fresh:new Set(),dim:new Set()};
 const DW_PAGE=200;
 const DW_KO={gather:"채집",craft:"제작",alter:"가공",collect:"수령",play:"연주",notify:"알림"};
-const dwStep=(k)=>k==="gather"?100:1;                       // 채집 100 단위·하한 100 / 제작·가공 1 단위·하한 1
+const dwStep=(k)=>k==="gather"?100:1;                       // 채집 100 단위(100 눈금에 맞춤 — gstepN)·직접 입력 1~99,999 / 제작·가공 1 단위
+// 채집 행 안내 — 스테퍼 아래 「3회 · 날개 15」(.dwnote), 재료 칸 「가방 47 → 목표 297」(.gest). 가방을 모르면 「회당 최대 100」
+const dwGoal=(r,n)=>gGoalTxt(typeof bagOf==="function"?bagOf(r.name):null,n)||"회당 최대 100";
 const dwQty=(r)=>{const v=DW.qty.get(r.id);return v!=null?v:dwStep(r.k);};
 const dwUnit=(k)=>k==="gather"?"개":k==="collect"?"건":"회";
 // 둘째 줄의 「 · 」 — 넓은 폭(6열 표)에서는 CSS 가 숨기고, 좁은 폭에서만 글자로 보인다
@@ -152,10 +154,11 @@ function dwStatusHTML(r){
   if(r.k==="gather")return r.ok?'<span class="badge ok">도구 OK</span>':'<span class="badge bad">도구 없음</span>';
   return badge(r.rec);}
 // 둘째 줄 = `상태 · line2`, line2 = [sub, mats || est].join(' · ')
-//   채집: 「도구 OK · 낚시 · 예상 1회」 / 제작: 「가능 · 재봉 · 경로 1/2 · 상급 가죽 6/4 · 옷감+ 337/2」 / 부족: 「재료 부족 · 가죽 가공 시설 · …」
+//   채집: 「가방 47 → 목표 297」 — 도구가 있으면 좁은 폭에서 「도구 OK · 낚시」를 빼고 목표만 둔다 (375px 에서 잘리지 않게.
+//         회수·날개는 스테퍼 아래 「3회 · 날개 15」). 도구가 없으면 「도구 없음 · …」 / 제작: 「가능 · 재봉 · 경로 1/2 · 상급 가죽 6/4 · 옷감+ 337/2」 / 부족: 「재료 부족 · 가죽 가공 시설 · …」
 function dwLine2HTML(r,n,ops){
-  const est=r.k==="gather"?`<span class="est">예상 ${gpass(n)}회</span>`:"";
-  const mats=`<span class="mats">${(r.k==="gather"||r.k==="collect")?"":dwMats(r,n)}</span>`;
+  const est="";
+  const mats=`<span class="mats">${r.k==="collect"?"":r.k==="gather"?`<span class="gest">${esc(dwGoal(r,n))}</span>`:dwMats(r,n)}</span>`;
   const hasTail=r.k==="gather"||(r.k!=="collect"&&dwNeed(r).length>0);
   return `<span class="l2">`
     +`<span class="dwst">${dwStatusHTML(r)}</span>`
@@ -185,14 +188,14 @@ function dwRow(r){if(r.k==="collect")return dwRowCollect(r);
   // 좁은 폭 둘째 줄 끝: [걸기만|수령까지] · 최대 (넓은 폭은 아래 `.qty` 의 같은 짝을 쓴다)
   const modeHtml=r.k==="alter"?dwModeHtml(r):"";
   const ops=(r.k==="alter"?dwModeHtml(r,true):"")+maxBtn;
-  return `<div class="dw-r k-${r.k}" data-id="${esc(r.id)}">`
+  return `<div class="dw-r k-${r.k}${r.k==="gather"&&r.ok?" gok":""}" data-id="${esc(r.id)}">`
     +`<span class="kd ${r.k}">${DW_KO[r.k]}</span>`
     +`<span class="nm"><b>${esc(r.name)}${x}</b>${r.sub?`<i>${esc(r.sub)}</i>`:"<i></i>"}</span>`
     +per
     +dwLine2HTML(r,n,ops)
     /* 값 칸(`.vb`) = 입력칸 + 단위(`.u`) — 좁은 폭에서는 「100개」·「5회」 가 값 칸 **안**에 붙는다.
        넓은 폭에서는 `.u` 가 숨고 옆의 `.unit` 열이 그대로다. */
-    +`<span class="dw-q"><span class="qty">${modeHtml}<span class="stepper"><button data-dec title="−${st}"${dis}>−</button><span class="vb"><input class="v" type="number" data-dwin min="1" max="${r.k==="gather"?99999:999}" value="${n}" title="직접 입력"${dis}><span class="u">${dwUnit(r.k)}</span></span><button data-inc title="+${st}"${dis}>+</button></span>${maxBtn||`<span class="dwnote">${r.k==="gather"?`예상 ${gpass(n)}회`:""}</span>`}</span>`
+    +`<span class="dw-q"><span class="qty">${modeHtml}<span class="stepper"><button data-dec title="−${st}"${dis}>−</button><span class="vb"><input class="v" type="number" data-dwin min="1" max="${r.k==="gather"?99999:999}" value="${n}" title="직접 입력"${dis}><span class="u">${dwUnit(r.k)}</span></span><button data-inc title="+${st}"${dis}>+</button></span>${maxBtn||`<span class="dwnote">${r.k==="gather"?gRunsTxt(n):""}</span>`}</span>`
     +`<span class="unit">${dwUnit(r.k)}</span>`
     /* 담은 행은 「✓」 외곽선 알약이 되고 **수량은 그대로 남는다** — 다시 담을 수 있다(글자는 ✓ 하나). 즉 이건 「담았다」 표시지 잠금이 아니다. */
     +`<button class="go${r.blocked?"":(DW.dim.has(r.id)?" done":" gold")}" data-add${dis} title="${r.blocked?esc((r.rec&&r.rec.reasonKo)||"지금은 담을 수 없습니다"):(DW.dim.has(r.id)?"이미 담았습니다 — 또 담을 수 있습니다":"담을 곳에 담습니다")}">${DW.dim.has(r.id)?DW_DONE:"담기"}</button></span>`
@@ -210,7 +213,7 @@ function dwBind(body,list){const byId=new Map(list.map((r)=>[r.id,r]));
       v=Math.max(1,Math.min(hi,Math.round(v)||1));DW.qty.set(r.id,v);
       if(inp&&!fromInput&&Number(inp.value)!==v)inp.value=v;   // 치는 중인 칸은 안 건드린다
       dwRowUpdate(el,r);};
-    const set=(d)=>put(dwQty(r)+d*dwStep(r.k));
+    const set=(d)=>put(r.k==="gather"?gstepN(dwQty(r),d):dwQty(r)+d*dwStep(r.k));
     const dec=el.querySelector("[data-dec]"),inc=el.querySelector("[data-inc]");
     if(dec&&!dec.disabled)MW.holdBtn(dec,()=>set(-1));
     if(inc&&!inc.disabled)MW.holdBtn(inc,()=>set(1));
@@ -231,10 +234,9 @@ function dwRowUpdate(el,r){const n=dwQty(r);const v=el.querySelector(".v");
   if(v&&v.tagName==="INPUT"){if(document.activeElement!==v&&Number(v.value)!==n)v.value=n;}
   else if(v)v.textContent=fmtN(n);
   const m=el.querySelector(".mats");if(m&&r.k!=="gather")m.innerHTML=dwMats(r,n);
-  // 예상 회수는 두 자리에 있다 — 넓은 폭의 스테퍼 아래(.dwnote)와 좁은 폭의 둘째 줄(.est)
-  if(r.k==="gather"){const t=`예상 ${gpass(n)}회`;
-    const note=el.querySelector(".dwnote");if(note)note.textContent=t;
-    const est=el.querySelector(".est");if(est)est.textContent=t;}
+  // 채집 안내는 두 자리 — 스테퍼 아래 「3회 · 날개 15」(.dwnote) · 재료 칸 「가방 47 → 목표 297」(.gest)
+  if(r.k==="gather"){const note=el.querySelector(".dwnote");if(note)note.textContent=gRunsTxt(n);
+    const g=el.querySelector(".gest");if(g)g.textContent=dwGoal(r,n);}
   DW.note=dwNoteOf(r,n);dwFoot();}
 function dwFoot(){const i=$("dwInfo");if(i)i.innerHTML=DW.chain?DW.note:"";
   const w=$("dwWrap");if(w)w.hidden=!(DW.chain&&DW.note);
@@ -346,6 +348,7 @@ function dwCartRow(it,where){
     ? `${it.facility||""} 완료분 수령`
     : it.type==="play"?`연주 · ${PLAY_MODE_KO_DW[it.mode||""]||""}${playN?` · ${fmtN(qty)}회`:""} · 호출 없음`
     : it.type==="notify"?`알림${it.sound===false?" · 소리 끔":""} · 호출 없음`
+    : it.type==="gather"?`${fmtN(qty)}개 · ${gRunsTxt(qty)}`
     : `${fmtN(qty)}${unit} · 예상 ${fmtN(dwCalls(it))}회${ctail}`);
   nm.append(b,i);
   row.append(kd,nm);
@@ -362,8 +365,9 @@ function dwCartRow(it,where){
       v=Math.max(1,Math.min(hi,Math.round(v)||1));
       if(!fromInput)inp.value=String(v);
       dwCartQty(it,v);};
-    dec.onclick=()=>put(Number(inp.value)-step);
-    inc.onclick=()=>put(Number(inp.value)+step);
+    // 채집은 100 눈금에 맞춰 움직인다 (gstepN — 250 → 300 / 200). 직접 입력은 1~99,999
+    dec.onclick=()=>put(it.type==="gather"?gstepN(inp.value,-1):Number(inp.value)-step);
+    inc.onclick=()=>put(it.type==="gather"?gstepN(inp.value,1):Number(inp.value)+step);
     inp.oninput=()=>{const v=Number(inp.value);if(inp.value!==""&&isFinite(v))put(v,true);};
     inp.onblur=()=>{inp.value=String(it.type==="gather"?(it.target||0):(it.count||1));};
     st.append(dec,inp,inc);

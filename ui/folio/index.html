@@ -73,6 +73,27 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;pad
 /* 값이 오기 전의 오버레이·연출 단추 — 자리는 지키고 흐리게만 */
 #btnOv:disabled,#btnOpen:disabled{opacity:.45;cursor:default}
 .tb svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+/* 「방송」 알약 (시안 C) — 머리줄 오른쪽 도구 앞. 누르면 방송 창.
+   방송 중: 분홍 점 깜빡 + 「방송 · 신청 n」, 대기 수는 골드 배지 */
+#btnBc{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border-radius:14px;border:1px solid var(--ctl);
+  font-size:11px;color:var(--chip);white-space:nowrap;flex-shrink:0;line-height:1}
+#btnBc:active{background:var(--press)}
+#btnBc b{font-weight:inherit}
+#btnBc svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round}
+#btnBc .bcdot{display:none;width:7px;height:7px;border-radius:50%;background:var(--pink);flex-shrink:0;animation:bcblink 1.4s infinite}
+#btnBc .bcn{display:none;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;border-radius:8px;
+  background:var(--gold);color:var(--on-gold);font-size:10px;font-style:normal}
+#btnBc.live{gap:6px;background:var(--badbg2);border-color:color-mix(in srgb,var(--pink) 50%,transparent);font-weight:700;color:var(--bad2)}
+#btnBc.live .bcdot{display:inline-block}
+#btnBc.live svg{display:none}
+#btnBc.live .bcn{display:inline-flex}
+@keyframes bcblink{0%,100%{opacity:1}50%{opacity:.25}}
+/* 좁은 창(경량판 375 · 모바일) — 머리줄 도구가 다섯이라 시안의 알약 전체가 한 줄에 안 들어간다.
+   꺼짐은 글자만(「방송」), 방송 중은 점 + 골드 배지만 남긴다 (전체 문구는 title) */
+@media (width < 440px){
+  #btnBc svg{display:none}
+  #btnBc.live #bcT{display:none}
+}
 #search{height:32px;display:flex;align-items:center;gap:8px;padding:0 10px;border-radius:9px;background:var(--inset);border:1px solid var(--ctl)}
 #search svg{width:12px;height:12px;fill:none;stroke:var(--faint2);stroke-width:1.8;flex-shrink:0}
 #q{flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--ink);font:inherit;font-size:11px}
@@ -126,6 +147,12 @@ body.selon #list{padding-bottom:52px}
 .row .t{display:block;font-size:12px;font-weight:700;color:var(--row);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .row.playing .t{color:var(--gold)}
 .row .s{display:block;font-size:10px;color:var(--row-sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 방송 신청으로 들어온 곡 — 아티스트 옆 「· 신청 이름」 작은 분홍 글씨 (시안 C). 줄의 칸(제목/부제)은 그대로 두고
+   둘째 줄에 곁들인다: 그 줄만 가로로 흘려 제목은 한 줄 전체, 부제와 신청 표시가 한 줄에 선다 (간격 6) */
+.row .txt.req{flex-direction:row;flex-wrap:wrap;align-content:center;justify-content:flex-start;column-gap:6px}
+.row .txt.req .t{flex:0 0 100%}
+.row .txt.req .s{flex:0 1 auto;min-width:0}
+.row .reqby{font-style:normal;font-size:10px;color:var(--pink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
 .row .d{font-size:10px;color:var(--mono)}
 #empty{padding:44px 24px;text-align:center;color:var(--row-sub);font-size:12.5px;line-height:1.7}
 
@@ -504,6 +531,7 @@ dialog input{width:100%;margin-top:10px;padding:9px 11px;border-radius:9px;backg
 <symbol id="ic-up" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
 <symbol id="ic-ov" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="8" rx="2"/><path d="M7 18h10"/></symbol>
 <symbol id="ic-open" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="4" rx="1"/><rect x="2" y="16" width="20" height="4" rx="1"/><path d="M7 12h10"/></symbol>
+<symbol id="ic-bc" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 000 8.4M16.2 7.8a6 6 0 010 8.4M4.9 4.9a10 10 0 000 14.2M19.1 4.9a10 10 0 010 14.2"/></symbol>
 <symbol id="ic-greet" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H8l-4 3v-4.5A8 8 0 0 1 13 4a8 8 0 0 1 8 8z"/><path d="M9 11h.01M13 11h.01M16 11h.01"/></symbol>
 </defs></svg>
 
@@ -513,6 +541,8 @@ dialog input{width:100%;margin-top:10px;padding:9px 11px;border-radius:9px;backg
       <b>모비폴리오</b>
       <span id="conn" class="off" title="연결 확인 중"><i></i><span id="connT" class="a11y-only">연결 확인 중</span></span>
       <span id="tools">
+        <!-- 방송 — 누르면 방송 창 (이 PC: 따로 뜨는 창 · 모바일: 같은 화면으로 옮겨 감) -->
+        <button id="btnBc" title="방송 창 열기"><i class="bcdot"></i><svg><use href="#ic-bc"/></svg><b id="bcT">방송</b><i class="bcn mono" id="bcN">0</i></button>
         <button class="tb" id="btnSync" title="갱신"><svg><use href="#ic-refresh"/></svg></button>
         <!-- 오버레이와 연출은 **별개 기능이라 단추도 따로** (☰ 메뉴로 합쳤던 것을 되돌렸다).
              **불러오기로는 숨기지 않는다** (불러오는 동안 단추가 없다가 생기지 않게) — 첫 화면부터 자리를 지키고,
@@ -833,7 +863,7 @@ function rowHtml(it,i){const playing=S.now&&S.now.key===it.key&&S.playing;const 
   const sub=[it.artist,inst?instLabel(inst):((it.tags&&it.tags[0])||"")].filter(Boolean).join(" · ");
   return `<div class="row ${sel?"sel":""} ${playing?"playing":""}" data-k="${esc(it.key)}" title="${esc(it.title)}${songIdOf(it)?" · "+songTag(songIdOf(it)):""}">
     <span class="ens ${n?ensCls(n):"none"}" role="button" tabindex="0" title="${SONG_SET_LABEL}" aria-label="곡 설정">${n?n:`<svg><use href="#ic-scroll"/></svg>`}</span>
-    <span class="txt"><span class="t">${esc(it.missing?"(없음) "+it.title:(it.song||it.cleaned||it.title))}${it.dupNo?` <span style="color:var(--faint3)">#${it.dupNo}</span>`:""}</span>${sub?`<span class="s">${esc(sub)}</span>`:""}</span>
+    <span class="txt${it.req?" req":""}"><span class="t">${esc(it.missing?"(없음) "+it.title:(it.song||it.cleaned||it.title))}${it.dupNo?` <span style="color:var(--faint3)">#${it.dupNo}</span>`:""}</span>${sub?`<span class="s">${esc(sub)}</span>`:""}${it.req?`<em class="reqby">· 신청 ${esc(it.req)}</em>`:""}</span>
     <span class="d mono">${it.duration?fmtSec(it.duration):"--:--"}</span></div>`;}
 function renderList(){const items=currentItems();S._items=items;const g=$("list");const st=g.scrollTop;
   const emptyMsg=S.loadErr?`서버에서 곡 목록을 받지 못했습니다 (${S.loadErr}) — 위의 갱신을 눌러 다시 시도하세요`
@@ -854,7 +884,7 @@ function renderList(){const items=currentItems();S._items=items;const g=$("list"
       const list=items.map((x)=>({key:x.key,title:x.title,inst:x.plInst||""}));
       playFrom(list,list.findIndex((x)=>x.key===k),S.view.kind==="pl"?"pl:"+S.view.id:S.view.kind,viewName());};
     t.oncontextmenu=(e)=>{e.preventDefault();const it=S.byKey.get(k)||items.find((x)=>x.key===k);const m=[[it?it.title:k,null],[SONG_SET_LABEL+"…",()=>openDetail(k)],["▶ 이 곡부터 재생",()=>{const list=items.map((x)=>({key:x.key,title:x.title,inst:x.plInst||""}));
-        playFrom(list,list.findIndex((x)=>x.key===k),S.view.kind==="pl"?"pl:"+S.view.id:S.view.kind,viewName());}],["+ 재생목록에 담기",()=>addMenu(e,[k])],["합주 인원 지정…",()=>ensMenu(e,[k],ensOf(it))],
+        playFrom(list,list.findIndex((x)=>x.key===k),S.view.kind==="pl"?"pl:"+S.view.id:S.view.kind,viewName());}],["다음에 재생",()=>queueAdd(k,true)],["현재 재생목록 끝에 담기",()=>queueAdd(k,false)],["+ 재생목록에 담기",()=>addMenu(e,[k])],["합주 인원 지정…",()=>ensMenu(e,[k],ensOf(it))],
         ["인사 프리셋…",()=>greetMenu(e,k,it)]];
       {const sid=songIdOf(it||{key:k});if(sid)m.push([`번호 ${songTag(sid)} 복사`,()=>copySongTag(sid)]);
         if(sid)m.push(["커버 고르기…",()=>pickCover(it||{key:k,title:k})]);}   // 밖(폰)에서도 — 있는 그림 중에서 고르기 (올리기는 감춘다)
@@ -1410,7 +1440,7 @@ function playCfgFrom(q){if(!q||Date.now()<(S.cfgHold||0))return;
   const pin=q.instPin||"";if(pin!==(S.settings.inst_pin||"")){S.settings.inst_pin=pin;instBoxSync();
     if($("isheet").classList.contains("open"))renderInstSheet(false);}}
 async function qPull(first,pre){const q=pre||await api("/api/queue");if(!q||!q.ok)return null;
-  playCfgFrom(q);mountSync(q);
+  playCfgFrom(q);mountSync(q);bcSync(q.bc);
   // 창을 새로 열었을 때는 보기를 바꾸지 않는다 — 이미 있던 대기열을 이어받기만 한다.
   const fresh=!first&&q.gen!==S.qgen&&q.total;S.qgen=q.gen;S.qrev=q.rev;
   S.queue=q.items||[];S.qi=q.pos;S.src=q.src||"";S.qname=q.name||"";S.qnext=q.next||null;instBoxSync();
@@ -1421,7 +1451,7 @@ async function qPull(first,pre){const q=pre||await api("/api/queue");if(!q||!q.o
 /* 쉬는 동안(재생 조회가 멈춰 있을 때)에도 서버 대기열·반복·셔플·고정을 3초마다 본다 — CLI 를 쓰지 않는 길이다.
    재생 중에는 pollAct 가 /api/now 의 gen·rev 로 같은 일을 한다 (설정이 바뀌면 서버가 rev 를 올린다). */
 async function cfgSync(){if(S.pollT||S.switching)return;const q=await api("/api/queue");if(!q||!q.ok)return;
-  mountSync(q);
+  mountSync(q);bcSync(q.bc);
   if(q.gen!==S.qgen||q.rev!==S.qrev||(typeof q.shuffle==="boolean"&&q.shuffle!==S.shuffle)||(q.repeat&&q.repeat!==S.repeat)
      ||(q.instPin||"")!==(S.settings.inst_pin||""))await qPull(false,q);}
 async function playFrom(list,index,src,name){
@@ -1436,6 +1466,13 @@ async function playFrom(list,index,src,name){
     const r=await api("/api/queue",{keys,start:it.key||it.title,src:src||"view",name:name||viewName(),inst});
     await afterPlay(r);
   }finally{S.switching=false;}}
+/* 줄 메뉴 「다음에 재생」·「현재 재생목록 끝에 담기」 — 지금 곡은 끊지 않는다. 이미 담긴 곡은 옮긴다(서버 규칙).
+   대기열이 비어 있으면 서버가 그 곡 하나로 만들되 틀지 않는다. 답의 gen 을 먼저 받아 두어 qPull 이
+   「새 대기열」로 보고 보기를 현재 재생목록으로 끌고 가지 않게 한다 — 보던 목록에 그대로 머문다. */
+async function queueAdd(k,next){const r=await api(next?"/api/queue/next":"/api/queue/append",{key:k});
+  if(!r||r.ok===false){toast("담지 못했습니다: "+((r&&(r.message||r.error))||""));return;}
+  S.qgen=r.gen;await qPull(false,r);
+  toast(next?"다음 곡으로 담았습니다":"현재 재생목록 끝에 담았습니다",2500,"ok");}
 async function playAt(i){if(S.switching)return;S.switching=true;S.opFresh=true;
   try{await afterPlay(await api("/api/queue/at",{index:i}));}finally{S.switching=false;}}
 async function qStep(dir){if(S.switching)return;S.switching=true;
@@ -1514,7 +1551,7 @@ async function pollAct(){if(S.switching||pollBusy)return;pollBusy=true;try{
   const gen=S.gen;const nw=await api("/api/now");if(S.switching||gen!==S.gen||!S.pollT)return;
   if(!nw||!nw.ok){S.pollErr=(S.pollErr||0)+1;if(S.pollErr>=5){S.pollErr=0;await stopAll("CLI 응답 없음");}return;}
   S.pollErr=0;const p=nw.perf||{};const s=S.settings;const sinceStart=(Date.now()-S.startedAt)/1000;
-  mountSync(nw);
+  mountSync(nw);bcSync(nw.bc);
   ensFromNow(nw);
   askFromNow(nw);
   // 악기는 **오버레이와 한 몸**이다 — 게임이 알려 주는 「지금 든 악기」를 기억해 두고, 곡에 저장된
@@ -1575,6 +1612,16 @@ $("btnRepeat").onclick=()=>{const i=REPEAT.findIndex((x)=>x.v===S.repeat);const 
    항목이 늘면서 좁은 창에 다 들어가지 않았다. 같은 창에서 옮겨 가고 「← 돌아가기」로 돌아온다.
    옮겨 가는 동안 「창이 닫혔다」로 오해받지 않게 아래 pagehide 에서 신호를 보내지 않는다. */
 function openSettings(){goingInside=true;location.href="/folio/settings.html";}
+/* 방송 — 머리줄 알약. 서버 답(`/api/now`·`/api/queue` 의 bc)으로 켜짐·대기 수를 그린다 */
+function bcSync(bc){if(!bc||typeof bc.on!=="boolean")return;const b=$("btnBc");
+  b.classList.toggle("live",bc.on);$("bcT").textContent=bc.on?"방송 · 신청":"방송";$("bcN").textContent=String(Number(bc.wait)||0);
+  b.title=bc.on?"방송 중 — 누르면 방송 창":"방송 창 열기";}
+/* 이 PC 는 방송 창(따로 뜨는 앱 창)을 띄우거나 앞으로, 모바일은 같은 화면으로 옮겨 간다 */
+$("btnBc").onclick=async()=>{
+  if(REMOTE){goingInside=true;location.href="/folio/broadcast.html";return;}
+  const r=await api("/api/bc/window",{});
+  if(!r||r.ok===false){toast("방송 창을 열지 못했습니다: "+((r&&(r.message||r.error))||""));return;}
+  if(r.opened===false){goingInside=true;location.href="/folio/broadcast.html";}};   // 창을 못 띄우는 판(개발 서버) — 이 창에서 연다
 $("btnSet").onclick=openSettings;
 /* 연주 인사는 **따로 있는 페이지**다 (설정 안이 아니라 도구줄에 자기 단추로) */
 $("btnGreet").onclick=()=>{goingInside=true;location.href="/folio/greet.html";};

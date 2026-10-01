@@ -67,6 +67,8 @@ self.addEventListener("fetch", (e) => {
   // 폰 사이트(link.mobimml.com)에서는 **같은 출처에 우편함이 있다** (`/box/<코드>` · `/new` · `/health`).
   // 여기를 담으면 한 번 읽고 사라져야 할 봉투가 폰 디스크에 남고, 끊겼을 때 옛 상자를 새것처럼 내준다.
   if (url.pathname.startsWith("/box/") || url.pathname === "/new" || url.pathname === "/health") return;
+  // 방송 코드 → 터널 주소 (`GET /bc/<코드>`, 손님 신청 페이지 /live/). 방송이 꺼지면 바로 사라져야 하는 값이다.
+  if (url.pathname.startsWith("/bc/")) return;
 
   e.respondWith(
     fetch(req).then((res) => {

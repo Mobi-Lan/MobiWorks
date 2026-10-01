@@ -72,6 +72,14 @@ function keepScroll(fn){const l=$("tabBody");const top=l?l.scrollTop:0;fn();if(l
    필요분 = 부족분 N (예상 ⌈N/100⌉회) · 최대 = ⌈N/100⌉×100 (최소 100, 그 회차를 꽉 채움) · 문맥 없으면 100개 × N회 ── */
 const gmax=(n)=>Math.max(100,Math.ceil(Math.max(1,n)/100)*100);
 const gpass=(n)=>Math.max(1,Math.ceil(n/100));
+/* 채집 개수 스테퍼 한 칸 — 100 단위 눈금에 맞춰 움직인다 (250 → + 300 / − 200). 직접 입력은 1~99,999 그대로.
+   100 아래 값(예: 50)에서 − 는 그대로 두고, + 는 100 으로 간다. d 는 +1 | −1 */
+const GCOUNT_MAX=99999;
+const gstepN=(v,d)=>{v=Math.max(0,Math.round(Number(v)||0));
+  return d>0?Math.min(GCOUNT_MAX,Math.floor(v/100)*100+100):Math.max(Math.min(v,100)||1,Math.ceil(v/100)*100-100);};
+/* 채집 안내 한 줄 — 「3회 · 날개 15」 / 「가방 47 → 목표 297」 (가방을 모르면 빈 글). 담는 화면이 같은 글을 쓴다 */
+const gRunsTxt=(n)=>`${fmtN(gpass(n))}회 · 날개 ${fmtN(gpass(n)*5)}`;
+const gGoalTxt=(bag,n)=>bag!=null?`가방 ${fmtN(bag)} → 목표 ${fmtN(bag+n)}`:"";
 function gatherBtns(name,short){return `<span class="gseg"><button class="pbtn" data-qa="gather" data-n="${esc(name)}" data-t="${short}" title="${fmtN(short)}개 캐기 · 예상 ${gpass(short)}회">필요분 ${fmtN(short)}</button><button class="pbtn" data-qa="gather" data-n="${esc(name)}" data-t="${gmax(short)}" title="회차를 꽉 채움 · ${gpass(short)}회 × 100">최대 ${fmtN(gmax(short))}</button></span><span class="hint">회당 최대 100개</span>`;}
 function gatherLoop(name,ok){const d=ok?"":" disabled";return `<span class="gloop" data-gl="${esc(name)}"><span class="stepper"><button data-gd title="−1"${d}>−</button><span class="v">1</span><button data-gi title="+1"${d}>+</button></span><button class="pbtn" data-qa="gather" data-n="${esc(name)}" data-mul="1"${d}>100개 × 1회 담기</button><span class="hint">${ok?"회당 최대 100개":"도구 없음"}</span></span>`;}
 function madeLoop(name,id,kind){return `<span class="gloop" data-gl="${esc(name)}"><span class="stepper"><button data-gd title="−1">−</button><span class="v">1</span><button data-gi title="+1">+</button></span><button class="pbtn" data-qa="${kind}" data-n="${esc(name)}" data-id="${esc(id)}" data-c="1" data-mul="1">${KIND_KO[kind]||kind} 1회 담기</button></span>`;}

@@ -35,7 +35,7 @@ APP = "mobiworks"          # /api/health 식별자 · X-Requested-With 값
 #    쓰는 것도 이것이다 (앱 이름은 바뀔 수 있으니 이름을 박아 두지 않고 이 값으로 찾는다).
 APP_NAME = "MobiWorks"
 APP_TITLE = "모비웍스"
-VERSION = "1.0.7"
+VERSION = "1.0.9"
 
 FROZEN = bool(getattr(sys, "frozen", False))
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -217,6 +217,7 @@ if FROZEN or EMBED:
     sys.stdout = sys.stderr = _logf
 elif sys.stdout:
     sys.stdout.reconfigure(encoding="utf-8")
+import broadcast              # noqa: E402  (방송 모드 방 상태 — 손님 길·우편함·터널 감시. CLI 를 부르지 않는다)
 import categories             # noqa: E402
 import cli_transport as cli   # noqa: E402
 import ledger                 # noqa: E402  (날개·산출 장부 — 파일만 읽고 쓴다)
@@ -344,6 +345,7 @@ FOLIO_READ_OK = {
     "activity",       # 게임의 지금 연주 상태 — 밖에서는 **PC 감시 스레드가 마지막으로 본 값**(engine `_activity_cached`, CLI 안 탐)
     "social",         # 연주 인사 화면의 행동·표정 목록 — 밖에서는 **PC 가 마지막으로 받아 둔 목록**(engine `_SOCIAL`, CLI 안 탐)
     "covers",         # 커버 고르기 시트의 칸 — 이 PC 의 폴더 경로(dir·folder·folders)는 밖에 싣지 않는다
+    "bc/state",       # 방송 창 — 방 상태 (모바일 리모컨에서도 같은 화면 · read 는 보기만)
 }
 
 # **밖에서 연주를 조작할 수 있는 길.** 이것은 새로 여는 것이 아니라 **되돌리는 것**이다 —
@@ -363,6 +365,7 @@ FOLIO_PLAY_OK = {
     "play", "stop",   # `sync`(게임 읽기 갱신)는 뺐다 — 폰은 PC 가 읽은 값만 본다
     "queue", "queue/step", "queue/at", "queue/ask", "queue/clear",
     "queue/inst",     # 대기열의 한 곡에 악기 저장 (미니 「현재곡 칸」) — 그쪽 REMOTE_PLAY_OK 와 같은 목록
+    "queue/next", "queue/append",   # 줄 메뉴 「다음에 재생」·「현재 재생목록 끝에 담기」 — 그쪽 REMOTE_PLAY_OK 와 같은 목록
 }
 
 # **밖에서 폴리오를 「고칠」 수 있는 길** (범위 `edit` 부터) — 폰 사이트는 PC 앱의
@@ -381,6 +384,9 @@ FOLIO_EDIT_OK = {
     "songs",          # 곡 상세 「커버」 — 있는 그림 중에서 고르기만
     "presets",        # 연주 인사 화면의 프리셋 (항목·기본·곡별) — 폰(edit)이 프리셋 `chat` 을 바꿀 수 있다 (의도한 것이다)
     "settings",       # 폴리오 설정 네 갈래 + 연주 인사 — `FOLIO_SETTINGS_REMOTE_OK` 만
+    # 방송 창의 조작 (모바일 리모컨에서도 같은 화면) — 값이 안 들고 이 PC 의 창·파일이 아니다.
+    # `bc/window`(방송 창 열기·앞으로)는 **여기 없다** — 이 PC 의 창이다.
+    "bc/on", "bc/off", "bc/code", "bc/pl", "bc/cfg", "bc/ok", "bc/no", "bc/block",
     # `greet/test`(연주 인사 「보내 보기」)는 **여기 없다** — 게임 채팅으로 나가 남에게 보인다. 어느 범위든 이 PC 에서만.
     # 폰 화면은 그 단추를 감춘다 (folio/net.js `MF.CAN.greetTest`).
 }
@@ -608,7 +614,8 @@ def _cors_origin(handler) -> str:
 
 
 def _cors_headers(handler) -> None:
-    org = _cors_origin(handler)
+    # 방송 손님 길은 제 출처 판정을 따로 한다 (`_bc_cors_origin` — 원격 켜짐과 무관)
+    org = getattr(handler, "_bc_cors", "") or _cors_origin(handler)
     if not org:
         return
     handler.send_header("Access-Control-Allow-Origin", org)
@@ -674,8 +681,14 @@ def _tunnel():
         _TUNNEL = tunnel.Tunnel(store.DATA_DIR, log=_say_tunnel)
         # 유휴 자동 닫기 — 마지막 원격 요청 뒤 설정한 만큼 지나면 스스로 닫는다.
         # **문 너머에 날개를 쓰는 실행이 있다.** 켜 두고 잊는 것을 그냥 둘 수 없다.
-        _TUNNEL.watch_idle(lambda: _last_remote, lambda: _remote_cfg()["idleMin"])
+        # 방송 중에는 닫지 않는다 — 손님 요청도 활동으로 세지만(`_bc_guest`), 손님이 잠깐 없다고 방송을 끊으면 안 된다.
+        _TUNNEL.watch_idle(lambda: _last_remote, _tunnel_idle_min)
     return _TUNNEL
+
+
+def _tunnel_idle_min() -> int:
+    """유휴 자동 닫기 분 (0 = 안 닫음). **방송 중에는 0** — 손님이 잠깐 없다고 방송을 끊지 않는다."""
+    return 0 if broadcast.ROOM.on else _remote_cfg()["idleMin"]
 
 
 def _tunnel_got_url(url: str) -> None:
@@ -686,6 +699,7 @@ def _tunnel_got_url(url: str) -> None:
     # **주소는 로그에 적지 않는다**. 터널 주소는 문 위치라 백업에서도 빼는 비밀이고(BACKUP_SECRET_KEYS),
     # 로그는 실행 중 회전하며 한 세대(`.1`)를 더 남긴다 — 문의 글로 옮겨 붙이기 쉬운 파일이다.
     _say("[tunnel] 허용할 주소를 새 터널 주소로 맞췄습니다")
+    broadcast.ROOM._wake.set()      # 방송 중이면 우편함의 코드 → 주소를 곧바로 새 주소로 (PUT /bc/<코드>)
 
 
 def _mailbox_put(url: str) -> dict:
@@ -726,6 +740,95 @@ def _mailbox_put(url: str) -> dict:
     # (화면이 주소를 따로 적으면 우편함을 옮길 때 한쪽만 바뀐다).
     return {"ok": True, "code": code, "ttl": int(out.get("ttl") or 180),
             "site": MAILBOX, "link": f"{MAILBOX.rstrip('/')}/?c={code}"}
+
+
+# ── 방송 모드 (broadcast.py) ─────────────────────────────────────────────
+# 손님은 이 PC 의 터널로 바로 붙는다. 방송 창에서 켜면 **원격 리모컨이 꺼져 있어도** 터널을 연다(인증키 없이 —
+# 손님 길은 기기 쪽지와 따로 논다). 우편함에는 `/bc` 길로 코드 → 터널 주소만 적는다.
+# 개발·검사 판(`MOBIW_NO_CLI=1`)은 밖에 나가지 않는다 — 가짜 터널·가짜 우편함 (cloudflared 를 받지도 띄우지도 않는다).
+_BC_OFFLINE = (not RELEASE) and os.environ.get("MOBIW_NO_CLI") == "1"
+_BC_OFFLINE_TUNNEL = broadcast.OfflineTunnel()
+BC_WINDOW_TITLE = "모비폴리오 · 방송"     # 방송 창 제목 (ui/folio/broadcast.html `<title>`) — 창을 찾아 앞으로 올릴 때 쓴다
+BC_WINDOW_W, BC_WINDOW_H = 820, 560      # 방송 창 안쪽 크기 (CSS px, 시안)
+
+
+def _bc_tunnel():
+    return _BC_OFFLINE_TUNNEL if _BC_OFFLINE else _tunnel()
+
+
+def _bc_activity() -> None:
+    """손님 요청·방송 터널 열기를 **원격 활동**으로 센다 — 유휴 자동 닫기가 방송을 끊지 않게."""
+    global _last_remote
+    _last_remote = time.time()
+
+
+def _bc_hosts() -> set:
+    """손님 길을 받을 Host — 방송이 우편함에 적어 둔 터널 주소 · 지금 떠 있는 터널 주소."""
+    hs = set()
+    h = broadcast.ROOM.tunnel_host()
+    if h:
+        hs.add(h)
+    t = _BC_OFFLINE_TUNNEL if _BC_OFFLINE else _TUNNEL
+    if t is not None:
+        try:
+            st = t.state()
+            if st.get("running") and st.get("url"):
+                hs.add(str(st["url"]).split("://", 1)[-1].strip("/").lower())
+        except Exception:
+            pass
+    return hs
+
+
+def _bc_cors_origin(handler) -> str:
+    """손님 페이지의 출처 — 우편함 사이트(`link.mobimml.com`)와 적어 둔 폰 사이트만. 원격 켜짐과 무관하다."""
+    org = (handler.headers.get("Origin") or "").strip().rstrip("/").lower()
+    if not org:
+        return ""
+    allowed = {MAILBOX.rstrip("/").lower()}
+    extra = str(store.get_settings().get("remote_origin") or "").strip().rstrip("/").lower()
+    if extra:
+        allowed.add(extra)
+    return org if org in allowed else ""
+
+
+def _bc_open_window() -> dict:
+    """방송 창 — 떠 있으면 앞으로, 없으면 새 앱 창(820×560). 개발·검사 서버는 창을 띄우지 않는다."""
+    if os.environ.get("MOBIW_NO_BROWSER"):
+        return {"ok": True, "opened": False}
+    if _front_window_titled(BC_WINDOW_TITLE):
+        return {"ok": True, "opened": "front"}
+    url = f"http://127.0.0.1:{PORT}/folio/broadcast.html"
+    exe = _find_app_browser()
+    if exe:
+        _seed_profile(APP_PROFILE)
+        args = [f"--window-size={BC_WINDOW_W},{BC_WINDOW_H}" if a.startswith("--window-size=") else a
+                for a in _app_window_args(exe, url, APP_PROFILE)]
+        try:
+            import subprocess
+            subprocess.Popen(args, creationflags=0x00000008)   # DETACHED_PROCESS
+            threading.Thread(target=_fit_app_window, kwargs={"title": BC_WINDOW_TITLE,
+                                                              "css": (BC_WINDOW_W, BC_WINDOW_H)},
+                             daemon=True, name="fit-bc-window").start()
+            return {"ok": True, "opened": "new"}
+        except OSError as e:
+            return {"ok": False, "error": "window", "message": f"창을 띄우지 못했습니다: {e}"}
+    import webbrowser
+    webbrowser.open(url)
+    return {"ok": True, "opened": "browser"}
+
+
+broadcast.configure(
+    mailbox=lambda: MAILBOX,
+    http=broadcast.offline_http if _BC_OFFLINE else broadcast._http_json,
+    tunnel=_bc_tunnel, port=lambda: PORT,
+    # 가짜 터널은 허용 주소(remote_host)를 건드리지 않는다
+    on_url=None if _BC_OFFLINE else (lambda url: _tunnel_got_url(url)),
+    remote_in_use=lambda: bool(store.get_settings().get("remote_on")),
+    activity=_bc_activity,
+    engine=lambda: folio_engine(),
+    settings=store.get_settings, save=store.set_settings,
+    open_window=lambda: _bc_open_window(),
+    say=lambda msg: _say(msg), thread=True)
 
 
 # ── 밖에서 못 만지는 설정 ──────────────────────────────────────────────
@@ -1184,6 +1287,10 @@ def _shutdown() -> None:
     # 강제 종료 타이머는 큐 대기 **뒤**에 터져야 한다 — 먼저 터지면 파일이 running 으로 남는다
     threading.Timer(QUIT_QUEUE_WAIT + 3.0, lambda: os._exit(0)).start()
     _stop_queue_for_exit()   # 큐 → 오버레이 → 서버 순
+    try:   # 방송 중이면 우편함의 코드를 지운다 (손님이 죽은 주소를 받지 않게)
+        broadcast.ROOM.shutdown()
+    except Exception:
+        pass
     try:   # 오버레이 창을 닫는다 — 유령 창을 남기지 않는다
         overlay.OVERLAY.stop()
     except Exception:
@@ -1515,6 +1622,24 @@ def _notify(notice: dict) -> None:
     _say(f"[notify] {notice.get('text')}" + ("" if notice.get("sound") else " (소리 없음)"))
 
 
+def _push_score() -> dict:
+    """채집 목표 도달 뒤 「연주로 밀어내기」에 쓸 악보 → `{"title"}` | `{"why"}` (CLI 0 — 폴리오가 들고 있는 값만 읽는다).
+
+    폴리오 대기열의 지금 곡, 없으면 보관함의 첫 악보. 악기는 바꾸지 않는다(지금 든 악기로 튼다).
+    탈것 위면 게임이 연주를 받지 않으므로 고르지 않는다. 제목 끝 공백은 CLI 가 못 찾으므로(실측) 건너뛴다."""
+    eng = folio_engine()
+    if eng._NOW.get("mounted"):
+        return {"why": "탈것 탑승 중"}
+    usable = [x for x in eng._build_items()
+              if isinstance(x, dict) and str(x.get("title") or "").strip() and not x.get("cliBroken") and not x.get("locked")]
+    now = (eng.queue_state().get("now") or {}).get("title") or ""
+    pick = next((x for x in usable if x.get("title") == now), None) or (usable[0] if usable else None)
+    if not pick:
+        return {"why": "보관함에 틀 수 있는 악보가 없음"}
+    return {"title": str(pick["title"])}
+
+
+QUEUE.push_score = _push_score
 QUEUE.play_start = _play_start
 QUEUE.play_stop = _play_stop
 QUEUE.playlist_songs = _playlist_songs
@@ -1652,6 +1777,46 @@ def _front_existing_window() -> bool:
             return False
         h = found[0]
         _app_hwnd = h               # 다음부터는 바로 이 창을 쓴다
+        if u.IsIconic(h):
+            u.ShowWindow(h, 9)      # SW_RESTORE
+        u.SetForegroundWindow(h)
+        u.BringWindowToTop(h)
+        return True
+    except Exception:
+        return False
+
+
+def _front_window_titled(needle: str) -> bool:
+    """제목에 `needle` 이 든 우리 앱 창(브라우저 앱 창)을 앞으로 → 찾았나. 방송 창을 두 번 띄우지 않으려고 쓴다."""
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+        u = ctypes.windll.user32
+        u.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+        u.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+        found = []
+
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def cb(h, _l):
+            if not u.IsWindowVisible(h):
+                return True
+            cls = ctypes.create_unicode_buffer(120)
+            u.GetClassNameW(h, cls, 120)
+            if not cls.value.startswith("Chrome_WidgetWin"):
+                return True
+            t = ctypes.create_unicode_buffer(300)
+            u.GetWindowTextW(h, t, 300)
+            if needle not in t.value:
+                return True
+            found.append(h)
+            return False
+
+        u.EnumWindows(cb, 0)
+        if not found:
+            return False
+        h = found[0]
         if u.IsIconic(h):
             u.ShowWindow(h, 9)      # SW_RESTORE
         u.SetForegroundWindow(h)
@@ -2534,8 +2699,46 @@ class H(SimpleHTTPRequestHandler):
     _stamp = property(lambda self: folio_engine().H._stamp.__get__(self))
     _take_video = property(lambda self: folio_engine().H._take_video.__get__(self))
 
+    # ── 방송 손님 길 (broadcast.py · docs/handoff/broadcast-api.md §4) ──────────────
+    # 손님은 기기 쪽지가 없다. 그래서 이 네 길은 **아래 문(`_remote_blocked`·`_guard`)보다 먼저** 여기서 끝나고,
+    # 다른 어떤 길로도 이어지지 않는다 — 손님 토큰(`X-MobiWorks-Guest`)은 이 네 길에서만 읽는다.
+    # Host 는 방송 터널 주소(또는 이 PC)만, Origin 은 우편함 사이트·적어 둔 폰 사이트만.
+    BC_GUEST = {"/api/bc/join": "join", "/api/bc/room": "room", "/api/bc/req": "req", "/api/bc/leave": "leave"}
+    BC_GUEST_HEADER = "X-MobiWorks-Guest"
+    _bc_cors = ""
+
+    def _bc_guest(self, path: str):
+        post = self.command == "POST"
+        host = (self.headers.get("Host") or "").lower()
+        local = host in _ok_hosts
+        if not local and host.split(":")[0] not in _bc_hosts():
+            if post:
+                self._drain()
+            return _json(self, {"ok": False, "error": "forbidden"}, 403)
+        origin = (self.headers.get("Origin") or "").strip().rstrip("/").lower()
+        org = _bc_cors_origin(self)
+        if origin and not org:
+            same = origin in (f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}") if local                 else origin.split("://", 1)[-1] in _bc_hosts()
+            if not same:
+                if post:
+                    self._drain()
+                return _json(self, {"ok": False, "error": "forbidden"}, 403)
+        self._bc_cors = org
+        if not local:
+            _bc_activity()                    # 손님 요청도 터널 활동이다 (유휴 자동 닫기)
+        body = {}
+        if post:
+            body = _read_json(self)
+            if "_error" in body:
+                return _json(self, {"ok": False, "error": "bad_request", "message": body["_error"]}, 400)
+        tok = (self.headers.get(self.BC_GUEST_HEADER) or "").strip()[:64]
+        st, out = broadcast.guest(self.BC_GUEST[path], body, tok, _remote_try_key(self))
+        return _json(self, out, st)
+
     def _get(self):
         u = urlparse(self.path)
+        if u.path == "/api/bc/room":   # 방송 손님 길 — 기기 쪽지 없이, 아래 문과 따로 논다 (`_bc_guest`)
+            return self._bc_guest(u.path)
         # ── 문은 여기 한 곳이다 ────────────────────────────────────────────
         # 길마다 손으로 `_guard()` 를 부르면 **반드시 빠뜨린다** — 하나만 빠져도 터널 주소만 알면
         # 인증 없이 읽힌다.
@@ -2762,6 +2965,10 @@ class H(SimpleHTTPRequestHandler):
             return _json(self, {"ok": False, "error": "not_found"}, 404)
         if raw_path.replace("\\", "/").lower().startswith("/folio/covers/"):   # 곡 번호로 고르는 카드 커버
             return self._serve_cover(raw_path.replace("\\", "/")[len("/folio/covers/"):])
+        if [x for x in _static_key(raw_path).split("/") if x][:1] == ["live"]:
+            # 방송 손님 페이지(`ui/live/`)는 **우편함 사이트에만** 있는 화면이다 — 이 PC 는 어떤 철자로도 내주지 않는다
+            # (정적 서빙으로 나가면 CSP 도 치환도 없는 원본이 된다 · `/live/index.html` 이 우리 첫 화면으로 가지도 않게 먼저 본다)
+            return _json(self, {"ok": False, "error": "not_found"}, 404)
         if u.path in ("/", "/index.html"):
             return self._serve_index()
         if _is_index_path(raw_path):   # /index.HTML · "/index.html " 같은 변형이 정적 서빙(CSP·토큰 없음)으로 새지 않게
@@ -2780,6 +2987,8 @@ class H(SimpleHTTPRequestHandler):
             return _json(self, {"ok": False, "error": "not_found"}, 404)
         if nkey in self.FOLIO_PAGES:
             return self._serve_index(self.FOLIO_PAGES[nkey])
+        if nkey in self.WINDOW_PAGES:
+            return self._serve_index(self.WINDOW_PAGES[nkey])
         if nkey in self.OVERLAY_PAGES:
             return self._serve_index(self.OVERLAY_PAGES[nkey], prefs=False)
         if nkey in self.FOLIO_ASSETS:
@@ -2889,6 +3098,10 @@ class H(SimpleHTTPRequestHandler):
         "/folio/settings.html": "folio/settings.html",
         "/folio/greet.html": "folio/greet.html",
         "/folio/covers.html": "folio/covers.html",     # 내 커버 관리
+    }
+    # 따로 띄우는 창 — 레일(shell.js)이 없는 폴리오 화면. 테마는 따른다 (`prefs=True`). 모바일 리모컨에서도 같은 화면이다.
+    WINDOW_PAGES = {
+        "/folio/broadcast.html": "folio/broadcast.html",   # 방송 창 (820×560 · `_bc_open_window`)
     }
     # 게임 위에 얹는 화면 — 레일(shell.js)이 없는 **창 속 내용**이라 FOLIO_PAGES 와 따로 둔다.
     # 같은 `_serve_index` 를 지나므로 CSP·토큰은 똑같이 걸린다 (WebView2 연출이 읽는다: folio/opening_wv.py).
@@ -3059,6 +3272,23 @@ class H(SimpleHTTPRequestHandler):
         """브라우저가 먼저 물어보는 예비요청. **허락한 사이트에만** 답한다.
         폰 화면은 Content-Type·X-Requested-With·X-MobiWorks-Remote 를 붙이므로 반드시 이 단계를
         거친다 — 여기서 답이 없으면 본 요청은 보내지지도 않는다."""
+        if urlparse(self.path).path in self.BC_GUEST:
+            # 방송 손님 길 — 손님 페이지(우편함 사이트)에만. 손님 토큰 머리를 허락한다 (기기 쪽지 머리는 아니다)
+            org = _bc_cors_origin(self)
+            if not org:
+                self.send_response(403)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Origin", org)
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Requested-With, " + self.BC_GUEST_HEADER)
+            self.send_header("Access-Control-Max-Age", "600")
+            self.send_header("Vary", "Origin")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         org = _cors_origin(self)
         if not org:
             self.send_response(403)
@@ -3110,6 +3340,8 @@ class H(SimpleHTTPRequestHandler):
 
     def _post(self):
         u = urlparse(self.path)
+        if u.path == "/api/bc/join" or u.path == "/api/bc/req" or u.path == "/api/bc/leave":   # 방송 손님 길 (`_bc_guest`)
+            return self._bc_guest(u.path)
         if u.path == "/api/remote/login":
             # ── 밖에서 들어오는 문 ──
             # 여기만 `_guard()` 를 안 탄다 (아직 쪽지가 없으니 당연하다). 대신 **세 겹**이다:
@@ -3450,7 +3682,9 @@ class H(SimpleHTTPRequestHandler):
                 return _json(self, {"ok": False, "error": "forbidden"}, 403)
             patch = p.get("settings")
             if isinstance(patch, dict) and patch:
-                store.set_settings({k: v for k, v in patch.items() if str(k).startswith("overlay")})
+                # 밴드의 자리(overlay_x·y·off_x·off_y)·마지막 ▾ 상태는 밴드만 정한다 — 탭이 옛 값을 실어 보내도 받지 않는다
+                store.set_settings({k: v for k, v in patch.items()
+                                    if str(k).startswith("overlay") and k not in overlay.BAND_HELD_KEYS})
                 overlay.OVERLAY.apply(store.get_settings())
                 # 폴리오 밴드도 같은 길로 켠다 — `overlay_folio` 도 `overlay` 로 시작하므로
                 # **밖에서는 못 켠다**는 규칙을 그대로 탄다 (이 길은 REMOTE_NEVER 다).
@@ -3492,6 +3726,73 @@ DISABLE_FEATURES = ("TranslateUI,msEdgeStartupBoost,"
 # 앱 창이 뜨는 크기 — **폰 폭**이 기준이다. 단위는 **CSS px** 이다.
 WINDOW_W, WINDOW_H = 375, 860
 
+# ── 앱 창의 마지막 자리·크기 (1.0.7 제보: 켤 때마다 375×860 으로 돌아간다) ──
+# 375×860 은 **처음 실행**의 크기다. 사용자가 창을 옮기거나 늘리면 그 값을 기억해 두고 다음 실행에 되살린다.
+# 단위는 **물리 px, 바깥 테두리 포함**(GetWindowRect 그대로) — 되살릴 때 SetWindowPos 에 그대로 준다.
+# 설정(`settings.json`)이 아니라 따로 둔다: 설정 화면이 고치는 값이 아니고, 백업으로 다른 PC 에 따라가면
+# 그 PC 의 모니터 배치와 맞지 않는다.
+WINDOW_FILE = "window.json"
+WINDOW_MIN_W, WINDOW_MIN_H = 240, 240   # 이보다 작은 기록은 믿지 않는다 (최소화 중에 잰 값 등)
+WINDOW_WATCH_SEC = 1.0                  # 창 자리를 이만큼마다 본다 — 두 번 연속 같으면(끌기가 끝났다) 저장
+
+
+def window_rect_clean(r) -> tuple | None:
+    """저장된 창 기록 → (x, y, w, h). 모양이 이상하면 None (처음 실행처럼 375×860)."""
+    try:
+        if isinstance(r, dict):
+            x, y, w, h = (int(r[k]) for k in ("x", "y", "w", "h"))
+        else:
+            x, y, w, h = (int(v) for v in r)
+    except (TypeError, ValueError, KeyError):
+        return None
+    if w < WINDOW_MIN_W or h < WINDOW_MIN_H or w > 32000 or h > 32000:
+        return None
+    if abs(x) >= 32000 or abs(y) >= 32000:   # 최소화된 창은 (-32000, -32000) 에 있다
+        return None
+    return x, y, w, h
+
+
+def clamp_window_rect(rect, work) -> tuple:
+    """창 (x, y, w, h) 를 작업 영역 (x, y, w, h) 안으로 — 모니터가 바뀌었거나 줄었을 때 창이 화면 밖으로 가지 않게.
+    크기는 작업 영역을 넘지 않고, 자리는 창 전체가 들어오게 당긴다."""
+    x, y, w, h = (int(v) for v in rect)
+    wx, wy, ww, wh = (int(v) for v in work)
+    w = max(min(w, ww), min(WINDOW_MIN_W, ww))
+    h = max(min(h, wh), min(WINDOW_MIN_H, wh))
+    x = min(max(x, wx), wx + ww - w)
+    y = min(max(y, wy), wy + wh - h)
+    return x, y, w, h
+
+
+def window_watch_step(saved, prev, cur, iconic: bool = False, zoomed: bool = False) -> tuple:
+    """창 지켜보기 한 번 → (저장할 사각형 | None, 다음 prev).
+
+    최소화·최대화 중에는 기록하지 않는다 (최대화를 풀면 원래 크기로 돌아가야 한다).
+    **두 번 연속 같은 값**일 때만 저장한다 — 끄는 도중의 값은 쓰지 않는다. 이미 저장한 값과 같으면 쓰지 않는다."""
+    if iconic or zoomed:
+        return None, None
+    cur = window_rect_clean(cur)
+    if cur is None:
+        return None, None
+    if cur == prev and cur != saved:
+        return cur, cur
+    return None, cur
+
+
+def _saved_window_rect() -> tuple | None:
+    return window_rect_clean(store.load(WINDOW_FILE, None))
+
+
+def _save_window_rect(rect) -> None:
+    x, y, w, h = rect
+    try:
+        store.save(WINDOW_FILE, {"x": x, "y": y, "w": w, "h": h})
+    except Exception as e:
+        _say(f"[window] 창 자리를 저장하지 못했습니다: {type(e).__name__}: {e}")
+
+
+_watched_windows: set = set()    # 지켜보는 중인 앱 창 핸들 (같은 창을 두 번 지켜보지 않는다)
+
 
 def fit_window_size(css_w: int, css_h: int, scale: float, frame_w: int, frame_h: int, work_h: int) -> tuple:
     """창 바깥 크기(물리 px)를 돌려준다 — 안쪽이 `css_w × css_h` CSS px 가 되게.
@@ -3507,8 +3808,83 @@ def fit_window_size(css_w: int, css_h: int, scale: float, frame_w: int, frame_h:
     return w, h
 
 
-def _fit_app_window(timeout: float = 20.0) -> bool:
-    """앱 창이 뜨면 안쪽을 WINDOW_W×WINDOW_H CSS px 로 맞춘다. 창을 새로 띄우지 않는다."""
+_user32_mine = None
+
+
+def _user32_own():
+    """이 모듈만 쓰는 user32 사본. `ctypes.windll.user32` 는 프로세스 전체가 함께 쓰는 객체라
+    오버레이(`overlay._U32`)가 `GetMonitorInfoW.argtypes` 를 제 구조체로 박아 두면, 다른 구조체를 넘기는
+    호출은 TypeError 로 조용히 실패한다 (작업 영역 높이를 못 재 창이 화면 밑으로 나갔다)."""
+    global _user32_mine
+    if _user32_mine is None:
+        import ctypes
+        _user32_mine = ctypes.WinDLL("user32")
+    return _user32_mine
+
+
+def _work_area_for(wintypes, rect) -> tuple | None:
+    """사각형에 가장 가까운 모니터의 작업 영역 (x, y, w, h). 못 읽으면 None."""
+    import ctypes
+    try:
+        u = _user32_own()
+        class MONITORINFO(ctypes.Structure):
+            _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT), ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+        x, y, w, h = rect
+        r = wintypes.RECT(x, y, x + w, y + h)
+        u.MonitorFromRect.restype = ctypes.c_void_p      # 핸들 — 64비트에서 잘리지 않게
+        u.MonitorFromRect.argtypes = [ctypes.POINTER(wintypes.RECT), wintypes.DWORD]
+        mon = u.MonitorFromRect(ctypes.byref(r), 2)      # MONITOR_DEFAULTTONEAREST
+        mi = MONITORINFO(); mi.cbSize = ctypes.sizeof(MONITORINFO)
+        if not mon or not u.GetMonitorInfoW(ctypes.c_void_p(mon), ctypes.byref(mi)):
+            return None
+        wk = mi.rcWork
+        return wk.left, wk.top, wk.right - wk.left, wk.bottom - wk.top
+    except Exception:
+        return None
+
+
+def _watch_app_window(u, wintypes, hwnd) -> None:
+    """앱 창의 자리·크기를 지켜보다가 바뀌면 저장한다 (`window_watch_step`). 창이 사라지면 끝난다.
+    닫는 순간에는 창이 이미 없어 잴 수 없다 — 그래서 닫을 때가 아니라 **바뀌고 멈출 때** 저장한다."""
+    import ctypes
+    key = int(hwnd or 0)
+    if not key or key in _watched_windows:
+        return
+    _watched_windows.add(key)
+
+    def loop():
+        try:
+            try:
+                u.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))   # 이 스레드도 물리 px 로 본다
+            except Exception:
+                pass
+            wr = wintypes.RECT()
+            u.GetWindowRect(hwnd, ctypes.byref(wr))
+            saved = window_rect_clean((wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top))
+            prev = saved
+            while u.IsWindow(hwnd):
+                time.sleep(WINDOW_WATCH_SEC)
+                if not u.IsWindow(hwnd) or not u.GetWindowRect(hwnd, ctypes.byref(wr)):
+                    break
+                cur = (wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top)
+                rect, prev = window_watch_step(saved, prev, cur, bool(u.IsIconic(hwnd)), bool(u.IsZoomed(hwnd)))
+                if rect:
+                    saved = rect
+                    _save_window_rect(rect)
+        except Exception as e:
+            _say(f"[window] 창 자리 지켜보기가 멈췄습니다: {type(e).__name__}: {e}")
+        finally:
+            _watched_windows.discard(key)
+    threading.Thread(target=loop, daemon=True, name="window-watch").start()
+
+
+def _fit_app_window(timeout: float = 20.0, title: str = "", css: tuple = (), remember: bool = True) -> bool:
+    """앱 창이 뜨면 안쪽을 WINDOW_W×WINDOW_H CSS px 로 맞춘다. 창을 새로 띄우지 않는다.
+    **기억해 둔 창 자리(`window.json`)가 있으면 그 자리·크기로** 되살린다 (지금 화면 안으로 당겨서) —
+    375×860 은 처음 실행에만. 그 뒤로 창 자리를 지켜보며 바뀌면 저장한다 (`_watch_app_window`).
+    `title`·`css` 를 주면 그 제목의 창을 그 크기로 (방송 창 — `_bc_open_window`, 기억하지 않는다)."""
+    title = title or APP_TITLE
+    css_w, css_h = css if len(css) == 2 else (WINDOW_W, WINDOW_H)
     if os.name != "nt":
         return False
     try:
@@ -3537,7 +3913,7 @@ def _fit_app_window(timeout: float = 20.0) -> bool:
                 if not cls.value.startswith("Chrome_WidgetWin"):
                     return True
                 t = ctypes.create_unicode_buffer(300); u.GetWindowTextW(h, t, 300)
-                if APP_TITLE not in t.value:
+                if title not in t.value:
                     return True
                 pid = wintypes.DWORD(); u.GetWindowThreadProcessId(h, ctypes.byref(pid))
                 if int(pid.value) == me:
@@ -3564,28 +3940,44 @@ def _fit_app_window(timeout: float = 20.0) -> bool:
             class MONITORINFO(ctypes.Structure):
                 _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT), ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
             mi = MONITORINFO(); mi.cbSize = ctypes.sizeof(MONITORINFO)
-            mon = u.MonitorFromWindow(hwnd, 2)
-            if u.GetMonitorInfoW(mon, ctypes.byref(mi)):
+            um = _user32_own()      # 공유 user32 에는 오버레이가 제 구조체로 argtypes 를 박아 둔다 (그대로 부르면 TypeError)
+            um.MonitorFromWindow.restype = ctypes.c_void_p
+            mon = um.MonitorFromWindow(hwnd, 2)
+            if mon and um.GetMonitorInfoW(ctypes.c_void_p(mon), ctypes.byref(mi)):
                 work_h = mi.rcWork.bottom - mi.rcWork.top
         except Exception:
             pass
-        w, h = fit_window_size(WINDOW_W, WINDOW_H, scale, frame_w, frame_h, work_h)
-        u.SetWindowPos(hwnd, 0, 0, 0, w, h, 0x0002 | 0x0004 | 0x0010)   # NOMOVE | NOZORDER | NOACTIVATE
-        _say(f"[window] 배율 {int(scale * 100)}% · 테두리 {frame_w}×{frame_h} → 창 {w}×{h} (안쪽 {WINDOW_W}×{WINDOW_H} CSS px)")
+        main = remember and title == APP_TITLE and len(css) != 2    # 방송 창은 기억하지 않는다
+        saved = _saved_window_rect() if main else None
+        work = _work_area_for(wintypes, saved) if saved else None
+        if saved and work:
+            x, y, w, h = clamp_window_rect(saved, work)
+            u.SetWindowPos(hwnd, 0, x, y, w, h, 0x0004 | 0x0010)             # NOZORDER | NOACTIVATE
+            _say(f"[window] 지난번 창 자리로 — ({x},{y}) {w}×{h}")
+        else:
+            w, h = fit_window_size(css_w, css_h, scale, frame_w, frame_h, work_h)
+            u.SetWindowPos(hwnd, 0, 0, 0, w, h, 0x0002 | 0x0004 | 0x0010)   # NOMOVE | NOZORDER | NOACTIVATE
+            _say(f"[window] 배율 {int(scale * 100)}% · 테두리 {frame_w}×{frame_h} → 창 {w}×{h} (안쪽 {css_w}×{css_h} CSS px)")
+        if main:
+            _watch_app_window(u, wintypes, hwnd)
         return True
     except Exception as e:
         _say(f"[window] 크기를 못 맞췄습니다: {type(e).__name__}: {e}")
         return False
 
 
-def _app_window_args(exe: str, url: str, profile: str) -> list:
-    """앱 창 명령줄 (순수 함수 — 테스트가 창을 띄우지 않고 플래그를 확인한다)."""
+def _app_window_args(exe: str, url: str, profile: str, rect=None) -> list:
+    """앱 창 명령줄 (순수 함수 — 테스트가 창을 띄우지 않고 플래그를 확인한다).
+    `rect`(기억해 둔 창 자리)를 주면 그 크기·자리로 뜬다 — 뜬 뒤 `_fit_app_window` 가 지금 화면 안으로 다시 당긴다."""
+    r = window_rect_clean(rect) if rect is not None else None
+    size = f"--window-size={r[2]},{r[3]}" if r else f"--window-size={WINDOW_W},{WINDOW_H}"
+    pos = [f"--window-position={r[0]},{r[1]}"] if r else []
     # 창은 **폰 폭(375px)으로 뜬다**.
     # 이 앱은 폰 화면이 기준이다 — 디자인도 그 폭으로 그렸다.
     # 1280 으로 뜨면 넓은 배치만 보게 되고, 좁은 배치는 창을 줄여 봐야 나온다.
     # 창 테두리가 몇 px 을 먹으므로 본문은 375 보다 조금 좁게 잡힌다 — 우리 규칙은
     # 380 아래를 다시 한 번 받쳐 주므로(mobile.css) 그 몇 px 에서 깨지지 않는다.
-    return [exe, f"--app={url}", f"--window-size={WINDOW_W},{WINDOW_H}", f"--user-data-dir={profile}",
+    return [exe, f"--app={url}", size, *pos, f"--user-data-dir={profile}",
             "--no-first-run", "--no-default-browser-check", "--disable-extensions",
             f"--disable-features={DISABLE_FEATURES}",
             # 「복원하시겠습니까」 말풍선 — exit_type 이 Crashed 로 남을 때 뜬다
@@ -3660,7 +4052,8 @@ def _launch_app_window(url: str):
         try:
             import subprocess
             global _app_win
-            _app_win = subprocess.Popen(_app_window_args(exe, url, profile), creationflags=0x00000008)   # DETACHED_PROCESS
+            _app_win = subprocess.Popen(_app_window_args(exe, url, profile, _saved_window_rect()),
+                                        creationflags=0x00000008)   # DETACHED_PROCESS
             # 창이 뜨면 안쪽을 CSS px 기준으로 다시 맞춘다 — `--window-size` 는 배율을 모른다
             threading.Thread(target=_fit_app_window, daemon=True, name="fit-window").start()
             return _app_win      # 밴드의 `⏎` 가 이 창을 앞으로 올리려면 핸들을 들고 있어야 한다
