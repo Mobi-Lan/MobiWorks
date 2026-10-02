@@ -325,7 +325,8 @@ function dwCartRender(){
 function dwCalls(it){const p=it.progress||{};
   if(it.type==="play"||it.type==="notify")return 0;   // 연주·알림 — 호출 없음
   if(it.type==="gather")return p.passesPlanned||gpass(it.target||0);
-  if(it.type==="craft"||it.type==="collect")return 1;
+  if(it.type==="collect")return 1;
+  if(it.type==="craft")return p.passesPlanned||1;   // 시설 상한으로 나눈 호출 수 (N7) — 호출마다 날개 5
   return it.count||1;}
 function dwWingCalls(it){if(it.type==="collect")return 0;return dwCalls(it);}
 

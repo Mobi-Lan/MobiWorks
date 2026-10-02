@@ -6,12 +6,16 @@
 상태: 가방(bag)·창고·무게·채집 도구 내구도·가공 대기열(works)·정령의 날개·진행 중 행동.
 - execute_gathering: 회당 최대 100개, 도구 내구도 -1, 무게 +1/개. 내구도 0 이면 tool_broken, 무게가 차면 overweight (카탈로그 이름).
 - execute_crafting: 재료 차감·산출 추가, 모자라면 not_enough_ingredient. craftCount 는 시설 상한(10)을 넘으면 invalid_count(maxCount).
-- execute_altering: 대기열에 등록(ALTER_SEC 뒤 완료), complete_altering_work: 같은 시설의 완료분 전부 수령.
+- execute_altering: 대기열에 등록, complete_altering_work: 같은 시설의 완료분 전부 수령.
+  시설마다 칸이 ALTER_SLOTS(7, 실측 가죽 가공 시설 Lv.6)이고 작업은 **한 번에 하나씩 차례로** 돈다(1건 InProgress, 나머지 NotStarted —
+  실측). 칸이 찬 시설에 등록하면 **날개 5 를 받고** blocked·kind=unknown_modal 로 끝나며 「가공 대기열이 가득 찼습니다」 창이 남는다(실측).
+  그 창이 떠 있는 동안 실행 명령(채집·제작·가공·수령)은 전부 즉시 blocked·unknown_modal(날개 0) — 테스트가 close_modal() 로 닫는다.
 - 실행 명령은 회당 정령의 날개 5개 소모, 부족하면 not_enough_currency (카탈로그).
 MOBIW_DEMO_FAST=1 이면 지연 0, 가공 완료 2초 (테스트용). set_state()/reset() 로 테스트가 상황을 만든다.
 """
 from __future__ import annotations
 
+import math
 import os
 import threading
 import time
@@ -21,6 +25,10 @@ GATHER_DELAY = 0.0 if FAST else 1.5
 ALTER_SEC = 2.0 if FAST else 30.0
 MAX_PER_PASS = 100
 CRAFT_MAX_COUNT = 10        # 시설별 craftCount 상한 (데모 값)
+ALTER_SLOTS = 7             # 가공 시설 한 곳의 칸 수 (실측: 가죽 가공 시설 Lv.6 = 7칸)
+MODAL_FULL = "가공 추가 실패 — 가공 대기열이 가득 찼습니다."   # 실측 게임 창 문구
+# 그 창이 떠 있는 동안 막히는 명령 (실측: 채집은 즉시 blocked · 연주 걸기/정지는 답은 오지만 창은 그대로)
+MODAL_BLOCKS = ("execute_gathering", "execute_crafting", "execute_altering", "complete_altering_work")
 WINGS_PER_CALL = 5
 ITEM_WEIGHT = 1.0
 
@@ -100,6 +108,7 @@ def set_state(**kw) -> None:
     """테스트가 상황을 만든다: bag=, weight=, max_weight=, tool={이름:내구도}, wings=, pipe=, blocked_kind=, storage=,
     blocked_once=kind (다음 실행 명령 한 번만 blocked), collect_stop_once=True (다음 수령 한 번을 stopped_by_user·collected 0 으로 — 완료분은 남는다),
     autoplay=, autoplay_target= (get_activity.AutoPlayTarget),
+    alter_sec=초 (가공 한 건 길이 — 기본 ALTER_SEC), alter_slots={시설: 칸 수} (기본 ALTER_SLOTS), modal=글 (가공 대기열 가득 창이 떠 있음 — close_modal() 로 닫는다),
     perf={"title":…, "loop":bool, "ends_at":epoch} (연주 중),
     fail_next={명령: [오류, …]} (그 명령의 다음 호출들을 차례로 그 오류로 — "disconnected" 는 exit 5, 그 밖은 body.error.
       "loading" 은 게임이 재접속·캐릭터 선택 중인 답, "ok" 는 그 호출만 그대로 통과), gather_yield=N (채집 1회에 실제로 가방에 드는 수 — 100 보다 적게),
@@ -141,13 +150,41 @@ def _tool_ok(name: str) -> bool:
     return name not in S["tool_missing"] and S["tool"].get(name, 0) > 0
 
 
+def close_modal() -> None:
+    """테스트·데모의 「사람이 게임에서 창을 닫았다」."""
+    with _LOCK:
+        S.pop("modal", None)
+
+
+def _alter_sec() -> float:
+    v = S.get("alter_sec")
+    return float(v) if isinstance(v, (int, float)) else ALTER_SEC
+
+
+def _slots(facility: str) -> int:
+    v = (S.get("alter_slots") or {}).get(facility)
+    return int(v) if isinstance(v, int) and v > 0 else ALTER_SLOTS
+
+
 def _works_rows() -> list:
+    """시설마다 끝나는 순서대로 — 처음 안 끝난 한 건만 InProgress, 그 뒤는 NotStarted (실측: 한 번에 하나씩).
+    NotStarted 의 RemainingSeconds 는 **제 작업 길이**다 (실측: 7건 모두 300 — 앞 작업을 더한 값이 아니다)."""
     now = time.time()
     out = []
-    for w in S["works"]:
-        left = max(0, int(round(w["done_at"] - now)))
+    running: set = set()
+    for w in sorted(S["works"], key=lambda x: x["done_at"]):
+        # 완료 판정은 수령(complete_altering_work)과 같은 기준(done_at <= 지금) — 반올림으로 0 초가 되어도 아직이면 1 초
+        left = 0 if w["done_at"] <= now else max(1, math.ceil(w["done_at"] - now))
+        if left == 0:
+            state = "Completed"
+        elif w["facility"] in running:
+            state = "NotStarted"
+            left = max(1, int(round(w.get("dur") or left)))
+        else:
+            state = "InProgress"
+            running.add(w["facility"])
         out.append({"DisplayName": w["name"], "FacilityName": w["facility"],
-                    "State": "Completed" if left == 0 else "InProgress", "IsCompleted": left == 0, "RemainingSeconds": left})
+                    "State": state, "IsCompleted": left == 0 and state == "Completed", "RemainingSeconds": left})
     return out
 
 
@@ -197,8 +234,12 @@ def respond(command: str, body=None):
     with _LOCK:
         forced = _forced_fail(command)
         ticked = command == "execute_gathering" and bool(S.get("gather_ticks"))
+        modal = S.get("modal") if command in MODAL_BLOCKS else None
     if forced is not None:
         return forced
+    if modal:   # 「가공 대기열이 가득 찼습니다」 창이 떠 있다 — 사람이 닫을 때까지 실행 명령은 비용 없이 즉시 막힌다 (실측)
+        return 0, {"error": "blocked", "kind": "unknown_modal",
+                   "message": "A blocking UI is covering the screen. Ask the user to close it and retry."}
     if ticked:
         return _gather_ticked(body)
     if command == "execute_gathering" and GATHER_DELAY:
@@ -487,7 +528,7 @@ def _respond(command: str, body):
             S["bag"][n] -= req * count
         S["bag"][name] = S["bag"].get(name, 0) + per * count
         S["in_progress"] = None
-        return 0, {"result": "completed", "craftCount": count, "rewards": [{"DisplayName": name, "Count": per * count}],
+        return 0, {"result": "completed", "craftCount": count, "rewards": [{"Name": name, "Amount": per * count}],
                    "criticalRewards": [], "cost": _cost()}
 
     if command == "execute_altering":
@@ -501,9 +542,20 @@ def _respond(command: str, body):
         e = _blocked() or _pay()
         if e:
             return 0, e
+        here = [w for w in S["works"] if w["facility"] == facility]
+        if len(here) >= _slots(facility):
+            # 실측: 칸이 찬 시설 — 날개 5 는 이미 빠졌고 게임에 「가공 대기열이 가득 찼습니다」 창이 남는다
+            S["modal"] = MODAL_FULL
+            return 0, {"error": "blocked", "kind": "unknown_modal",
+                       "message": "A blocking UI is covering the screen. Ask the user to close it and retry.",
+                       "cost": _cost()}
         for n, req in ings.items():
             S["bag"][n] -= req
-        S["works"].append({"name": name, "facility": facility, "done_at": time.time() + ALTER_SEC})
+        now = time.time()
+        dur = _alter_sec()
+        # 한 번에 하나씩 — 앞 작업(아직 안 끝난 것)이 끝난 뒤에 시작한다
+        start = max([now] + [w["done_at"] for w in here if w["done_at"] > now])
+        S["works"].append({"name": name, "facility": facility, "done_at": start + dur, "dur": dur})
         return 0, {"result": "started", "message": "가공을 등록했습니다", "cost": _cost()}
 
     if command == "complete_altering_work":
@@ -531,7 +583,7 @@ def _respond(command: str, body):
             S["bag"][w["name"]] = S["bag"].get(w["name"], 0) + per
             rewards[w["name"]] = rewards.get(w["name"], 0) + per
             S["works"].remove(w)
-        return 0, {"collected": len(done), "rewards": [{"DisplayName": n, "Count": c} for n, c in rewards.items()],
+        return 0, {"collected": len(done), "rewards": [{"Name": n, "Amount": c} for n, c in rewards.items()],
                    "criticalRewards": [], "message": f"{len(done)}건 수령"}
 
     return 4, {"error": "unknown_command", "message": f"데모가 모르는 명령입니다: {command}"}

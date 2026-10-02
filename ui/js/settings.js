@@ -110,7 +110,7 @@ function fillSettings(s) {
   set("sQWingWasteMin", s.wing_cap_waste_min != null ? s.wing_cap_waste_min : 5);
   set("sUpdUrl", s.update_url || "");
   chk("sUpdChk", s.update_check);
-  chk("sBatchCollect", s.alter_batch_collect);
+  set("sAlterAt", s.alter_collect_at != null ? s.alter_collect_at : 7);   // 가공 완료가 n개 모이면 수령 (N6)
   chk("sQDoneNotify", s.queue_done_notify !== "off");   // 큐 종료 알림 — 기본 on
   // 테마 — 이 PC 는 설정 값을 칠하고 **입힌다**(「되돌리기」가 미리 보기를 되돌린다). 폰은 그 폰의 선택(없으면 「PC 설정」)
   if (window.MWTheme) {
@@ -319,7 +319,7 @@ const RESTORE_KEEPS = "밖에서 접속 설정 전부(인증키·켜기·범위�
           wing_cap_waste_min: Number(val("sQWingWasteMin", 5)) || 5,
         } : {}),
         update_url: String(val("sUpdUrl", "")).trim(), update_check: on("sUpdChk"),
-        alter_batch_collect: on("sBatchCollect"),
+        alter_collect_at: Number(val("sAlterAt", 7)) || 7,   // 1–7 — 범위는 서버가 자른다 (값이 안 드는 설정 — 폰(edit)에서도 바꾼다)
         queue_done_notify: on("sQDoneNotify") ? "on" : "off",   // 값이 안 드는 설정 — 폰(edit)에서도 바꾼다
         // 테마 — 이 PC 에서만 보낸다. 폰의 선택은 그 폰에만 둔다 (theme.js)
         ...(NET.REMOTE ? {} : { ui_theme: themeSel }),

@@ -17,8 +17,9 @@
   남은 개수가 100 보다 적은 회(넘칠 수 있는 회)는 도는 동안 3초마다 가방을 읽다가 목표에 닿으면 stop_action 으로
   끊는다 (_gather_goal_watch — 읽기는 도는 채집을 끊지 않는다, docs/CLI.md 실측). 매 회 전에 도구(ToolOk)·무게를 확인한다.
   1.0.9 의 회수 카드(runs)는 불러올 때 개수(runs×100)로 옮긴다.
-- 가공은 등록(execute_altering)만 하고 곧바로 다음 항목으로 넘어간다(waiting). 항목 전환 시·회차 끝에 완료분을 수령하고,
-  체인이 다 끝났는데 waiting 이 남아 있으면 남은 시간만큼(5초~30분) 기다렸다 수령한다.
+- 가공은 등록 직전마다 그 시설의 칸을 대기열로 세어 빈 칸만큼만 걸고 곧바로 다음 항목으로 넘어간다(waiting · N6).
+  항목 전환 시·회차 끝에 완료가 설정 n 개 모였으면 수령하고 빈 칸에 남은 건을 다시 건다. 체인이 다 끝났는데 waiting 이
+  남아 있으면 남은 시간만큼(5초~) 자며 같은 규칙으로 끝까지 간다. 제작은 시설 상한으로 나눠 여러 번 부른다(N7).
 - 실행 명령은 회당 정령의 날개 5개를 소모한다 (카탈로그 명시). 잔액 계산은 하지 않는다 — CLI 가 성공 응답의 cost 문장으로 알려준다.
 - 실행 전 점검: 항목마다 CLI 실행 명령을 부르기 전에 get_activity(읽기)로 사망·부활·전투·대화 선택·던전을 본다.
   막히면 실행 명령을 부르지 않고 precheck_* 로 끝내며 체인을 멈춘다 (설정 queue_precheck 로 끌 수 있다).
@@ -200,7 +201,8 @@ COLLECT_RETRY_MAX = 3        # 항목당 「수령분 없음」 허용 횟수 (p
 TOOL_ERRORS = {"tool_missing", "tool_broken"}      # 도구 → 그 항목 즉시 종료
 WEIGHT_ERRORS = {"overweight"}                     # 무게 → 그 항목 즉시 종료
 # 앱이 스스로 내는 에러 (CLI 를 부르기 전에 막은 것)
-APP_ERRORS = {"tool_not_ok", "overweight_soon", "max_passes", "not_gatherable", "not_in_cache", "cli_disconnected"}
+PASS_EXEMPT = ("alter", "craft")   # 안전 상한(queue_max_passes)을 대지 않는 종류 — 호출 수가 수량으로 정해진다
+APP_ERRORS = {"tool_not_ok", "overweight_soon", "max_passes", "not_gatherable", "not_in_cache", "cli_disconnected", "alter_full"}
 # 다음 항목도 성공할 수 없는 오류 — onError 설정과 무관하게 체인을 멈춘다.
 # 연결 계열(cli_transport 의 cli_not_found/cli_disabled/spawn_failed, exit 5 의 disconnected, status 의 game_off, timeout)과
 # blocked(사람이 게임 창을 닫아야 함)
@@ -276,7 +278,7 @@ PRECHECK_ERRORS = {"precheck_dead", "precheck_combat", "precheck_dialog", "prech
 # not_in_field 「Auto-travel cannot be used in this place. The user must leave this place before continuing.」, 날개 안 씀.
 # 사람이 나오기 전까지 뒤 항목도 전부 같은 답이라 체인을 멈춘다 (전장은 반대로 스스로 이동하므로 경고만).
 FATAL_ERRORS = {"cli_not_found", "cli_disabled", "spawn_failed", "disconnected", "game_off", "timeout", "blocked",
-                "cli_disconnected", "internal", "not_in_field", "loading"} | PRECHECK_ERRORS
+                "cli_disconnected", "internal", "not_in_field", "loading", "alter_full"} | PRECHECK_ERRORS
 
 # ── 읽기 재시도 (N4) ──
 # 읽기 호출(상태 점검·가방 수·도구·무게)이 연결 계열로 실패하면 곧바로 보드를 세우지 않고 짧게 다시 읽는다.
@@ -411,6 +413,9 @@ ERROR_KO = {
     # 날개 차단기 — 기본 설정값의 문장이다. 실제 정지·거절 문장은 설정값으로 다시 만든다 (wing_cap_msg·wing_waste_msg)
     "wing_cap": "날개 소모 이상 — 10분에 150 넘게 소모, 강제 정지",
     "wing_waste": "날개 헛소모 — 5분에 산출 없는 소모 4회, 강제 정지",
+    # 가공 칸이 찬 시설에 등록을 보냈다 — 게임에 「가공 추가 실패 — 가공 대기열이 가득 찼습니다」 창이 남고
+    # CLI 로는 닫히지 않는다(실측). 그 창이 떠 있는 동안 실행 명령은 전부 blocked·unknown_modal 이다
+    "alter_full": "게임에 뜬 『가공 대기열이 가득 찼습니다』 창을 닫아 주세요 — 닫은 뒤 다시 시작하면 이어서 갑니다",
 }
 
 # 오버레이 밴드(30px)에 찍는 아주 짧은 한글 — 「실패 · 도구 없음」 처럼. ERROR_KO 는 문장이라 밴드에 안 들어간다.
@@ -436,6 +441,7 @@ ERROR_SHORT = {
     "insufficient_decor_score": "장식 점수 부족", "ingredient_locked": "재료 잠김",
     "facility_not_found": "시설 없음", "component_not_found": "부품 없음", "cli_error": "호출 실패",
     "wing_cap": "날개 상한", "wing_waste": "날개 헛소모", "loading": "게임 로딩 중",
+    "alter_full": "가공 칸 가득 · 창 닫기",
 }
 
 
@@ -455,8 +461,11 @@ def card_text(it: dict) -> str:
     if t == "gather":
         return f"채집 {name} {_n(p.get('done'))}/{_n(it.get('target'))}"
     if t == "craft":
-        return f"제작 {name} {_n(p.get('done'))}/{_n(it.get('count'), 1)}회"
+        calls = craft_calls_line(it)   # 나눠 부르는 제작(N7) — 「제작 요리 3/15번 · 30/150회」
+        return f"제작 {name} " + (f"{calls} · " if calls else "") + f"{_n(p.get('done'))}/{_n(it.get('count'), 1)}회"
     if t == "alter":
+        if alter_line(it):   # 칸·수령을 센 카드 (N6) — 「가공 가죽+ 등록 14/63 · 수령 7 · 칸 5/7」
+            return f"가공 {name} {alter_line(it)}"
         return f"가공 {name} {_n(p.get('done'))}/{_n(it.get('count'), 1)}회"
     if t == "collect":
         return f"수령 {_s(it.get('facility')) or name}"
@@ -474,6 +483,27 @@ def card_text(it: dict) -> str:
     if t == "group":
         return f"그룹 {name} {_n(it.get('loop'))}/{_n(it.get('repeat'), 1)}회차"
     return name
+
+
+def craft_calls_line(it: dict) -> str:
+    """나눠 부르는 제작(N7)의 「3/15번」 — 한 번에 끝나는 카드면 빈 글."""
+    p = it.get("progress") if isinstance(it.get("progress"), dict) else {}
+    planned = _n(p.get("passesPlanned"), 1)
+    if planned <= 1:
+        return ""
+    return f"{_n(p.get('calls'))}/{planned}번"
+
+
+def alter_line(it: dict) -> str:
+    """칸·수령을 센 가공 카드(N6)의 「등록 14/63 · 수령 7 · 칸 5/7」. 아직 센 적이 없으면 빈 글.
+    등록·수령은 앱이 센 값(카드에 저장), 칸은 마지막으로 읽은 게임 대기열의 그 시설 건수다."""
+    p = it.get("progress") if isinstance(it.get("progress"), dict) else {}
+    if p.get("cap") is None and not _n(p.get("got")):
+        return ""
+    out = f"등록 {_n(p.get('done'))}/{_n(it.get('count'), 1)} · 수령 {_n(p.get('got'))}"
+    if p.get("cap") is not None:
+        out += f" · 칸 {_n(p.get('slot'))}/{_n(p.get('cap'))}"
+    return out
 
 
 def _line_of(it: dict) -> str:
@@ -608,6 +638,101 @@ def limits_set(recipe_id: str, max_count: int) -> None:
         pass
 
 
+def craft_calls(count: int, max_count) -> int:
+    """제작 count 회를 시설 상한 max_count 로 나눈 호출 수 (N7). 상한을 모르면 1 — 한 번에 보내 보고,
+    invalid_count 의 maxCount 를 배우면 그 자리에서 나눠 잇는다 (거절은 시작 전이라 날개 0)."""
+    c = max(0, _n(count))
+    m = _n(max_count)
+    if c <= 0:
+        return 0
+    return math.ceil(c / m) if m > 0 else 1
+
+
+def craft_plan(it: dict, p: dict | None = None) -> int:
+    """제작 카드의 예상 호출 수 = 이미 성공한 호출 + 남은 횟수를 시설 상한으로 나눈 수 (상한은 학습값)."""
+    p = p if isinstance(p, dict) else (it.get("progress") if isinstance(it.get("progress"), dict) else {})
+    count = max(1, _n(it.get("count"), 1))
+    left = max(0, count - _n(p.get("done")))
+    calls = max(0, _n(p.get("calls")))
+    if left <= 0:
+        return max(1, calls)
+    return calls + craft_calls(left, limits_get(_s(it.get("recipeId"))) if _s(it.get("recipeId")) else None)
+
+
+# ── 가공 시설 칸 (N6) ──
+# 실측(2026-10-02): 가죽 가공 시설 Lv.6 = 7칸. 등록 한 번이 한 칸이고, 작업은 한 번에 하나씩 차례로 돈다.
+# 칸이 찬 시설에 execute_altering 을 보내면 **날개 5 가 빠지고** blocked·kind=unknown_modal 로 끝나며 게임에
+# 「가공 대기열이 가득 찼습니다」 창이 남는다 — CLI 로 닫히지 않는다. 그래서 칸 참을 오류로 알아내지 않고,
+# 등록 직전마다 get_altering_works(읽기, 날개 0)로 그 시설(FacilityName)의 건수를 세어 칸 수에 닿았으면 부르지 않는다.
+# 칸 수는 레벨마다 다를 수 있다 — 거절을 한 번 보면 그때의 건수를 그 시설의 칸 수로 기억한다. 기억이 없으면 7.
+ALTER_SLOTS_DEFAULT = 7
+ALTER_SLOTS_FILE = "alter_slots.json"   # {"facility": {가공 이름: 시설 이름}, "cap": {시설 이름: 칸 수}}
+ALTER_COLLECT_AT_DEFAULT = 7            # 설정 alter_collect_at 의 기본 — 「가공 완료가 n개 이상 모이면 받으러 가기」
+
+
+def _slots_file() -> dict:
+    d = store.load(ALTER_SLOTS_FILE, {})
+    d = d if isinstance(d, dict) else {}
+    for k in ("facility", "cap"):
+        if not isinstance(d.get(k), dict):
+            d[k] = {}
+    return d
+
+
+def alter_facility_get(name: str) -> str:
+    """가공 이름 → 시설 이름. 기억(alter_slots.json)이 먼저, 없으면 레시피 DB 가 대기열에서 본 시설 목록."""
+    f = _s(_slots_file()["facility"].get(_s(name)))
+    if f:
+        return f
+    try:
+        import recipedb
+        db = store.load(recipedb.FILE, {})
+        fac = db.get("facilities") if isinstance(db, dict) else None
+        for fname, row in (fac.items() if isinstance(fac, dict) else ()):
+            if isinstance(row, dict) and _s(name) in (row.get("works") or []):
+                return _s(fname)
+    except Exception:
+        pass
+    return ""
+
+
+def alter_facility_set(name: str, facility: str) -> None:
+    name, facility = _s(name), _s(facility)
+    if not name or not facility:
+        return
+    d = _slots_file()
+    if d["facility"].get(name) == facility:
+        return
+    d["facility"][name] = facility
+    try:
+        store.save(ALTER_SLOTS_FILE, d)
+    except Exception:
+        pass
+
+
+def alter_cap_get(facility: str) -> int:
+    v = _n(_slots_file()["cap"].get(_s(facility)))
+    return v if v > 0 else ALTER_SLOTS_DEFAULT
+
+
+def alter_cap_set(facility: str, cap: int) -> None:
+    facility, cap = _s(facility), _n(cap)
+    if not facility or cap <= 0:
+        return
+    d = _slots_file()
+    d["cap"][facility] = cap
+    try:
+        store.save(ALTER_SLOTS_FILE, d)
+    except Exception:
+        pass
+
+
+def collect_at(settings: dict | None, cap: int = ALTER_SLOTS_DEFAULT) -> int:
+    """설정 「가공 완료가 n개 이상 모이면 받으러 가기」 — 1 ~ 그 시설의 칸 수."""
+    v = _n((settings or {}).get("alter_collect_at"), ALTER_COLLECT_AT_DEFAULT)
+    return max(1, min(max(1, _n(cap, ALTER_SLOTS_DEFAULT)), v))
+
+
 # ── 전장 안 (정지가 아니라 경고) ──
 # 실측: 전장 안(IsInBattleField=true)에서 execute_altering 을 보내자 CLI 가 스스로 전장을 나와
 # 금속 가공 시설까지 이동해 등록했다 — 한 번 부르는 데 약 50초(49.8초). 이동이 실행 명령 안에 들어 있으므로
@@ -707,10 +832,35 @@ def alter_mode(collect) -> str:
     return collect if collect in ALTER_MODES else "later"
 
 
+def alter_trips(count: int, collect, got: int = 0, done: int = 0) -> int:
+    """수령 왕복 예상 (날개 0). 칸이 ALTER_SLOTS_DEFAULT(7) 라고 보고 센다 — 7건마다 한 번.
+    「걸기만」(none)은 끝에 받지 않는다 — 칸을 비워야 남은 등록을 걸 수 있을 때만 (7건을 넘는 몫)."""
+    s = ALTER_SLOTS_DEFAULT
+    count, got, done = max(0, _n(count)), max(0, _n(got)), max(0, _n(done))
+    if alter_mode(collect) == "none":
+        regs = max(0, count - done)
+        return math.ceil(regs / s) if done > 0 else math.ceil(max(0, count - s) / s)
+    return math.ceil(max(0, count - got) / s)
+
+
 def alter_passes(count: int, collect) -> int:
-    """가공 항목의 예상 호출 수 = 등록 count 회 (+ 수령 1회 — 「걸기만」이 아닐 때만).
-    「걸기만」(none)은 수령 호출이 없으므로 count 그대로다."""
+    """가공 항목의 passesPlanned = 등록 count 회 (+ 수령 1회 — 「걸기만」이 아닐 때만). **안전 상한(queue_max_passes)에 대는 값**이다 —
+    칸을 비우는 수령 왕복(alter_trips)까지 더하면 44건짜리 카드가 상한 50 에 걸린다(예전에는 45). 화면·확인창의 「예상 N회」는
+    왕복까지 센 alter_calls 를 쓴다."""
     return count if alter_mode(collect) == "none" else count + 1
+
+
+def alter_calls(it: dict) -> tuple:
+    """가공 카드 한 장의 (호출, 날개 호출) — 남은 등록 + 남은 수령 왕복. 날개는 등록만 (수령은 0).
+    화면(board.js itemCalls·viewmodel.item_calls)과 확인창(_preview_card)이 같은 규칙을 쓴다."""
+    p = it.get("progress") if isinstance(it.get("progress"), dict) else {}
+    count = max(1, _n(it.get("count"), 1))
+    done = min(count, max(0, _n(p.get("done"))))
+    got = min(done, max(0, _n(p.get("got"))))
+    regs = 0 if it.get("regStop") else count - done
+    if it.get("status") == "waiting" and alter_mode(it.get("collect")) != "none" and regs == 0:
+        return max(1, alter_trips(count, it.get("collect"), got, done)), 0   # 수령만 남았다 — 날개 없음
+    return regs + alter_trips(count, it.get("collect"), got, done), regs
 
 
 def gather_plan(target: int) -> dict:
@@ -895,6 +1045,10 @@ class Queue:
         self._removed: set[str] = set()   # 러너가 도는 중에 지워진 id — 결과를 조용히 버리고 남은 회차를 건너뛴다
         self._group_halt: str | None = None   # 회차 끝·카드 사이 수령에서 난 오류로 「오류 시 정지」 그룹을 멈추라는 신호 (그룹 id)
         self._closing = False     # 앱 종료가 시작됐다 — 그 뒤의 「▶ 시작」은 거절한다 (shutdown)
+        # 마지막 실행 명령이 가공 등록이었나 — 그 직후 다른 명령이 blocked·unknown_modal 이면 「가공 대기열 가득」 창으로 본다 (N6)
+        self._alter_recent = False
+        self._post_rows = None    # 마지막 수령 뒤 읽은 대기열 (_exec_collect)
+        self._look_err = None     # 마지막 대기열 읽기 실패 (_alter_look)
         # 날개 차단기: (시각, 날개, 헛소모, 명령, 이름). 메모리에만 — ▶ 시작으로 **지우지 않는다** (지우면 상한이 무의미하다)
         self._wing_log: deque = deque()
         self._wing_lock = threading.Lock()
@@ -934,9 +1088,21 @@ class Queue:
         p = it.get("progress") if isinstance(it.get("progress"), dict) else {}
         for k in ("done", "passes", "totalDone", "have"):
             p[k] = max(0, _n(p.get(k)))
+        if it["type"] == "alter":
+            # 앱이 센 진행 (N6) — 등록(done)·수령(got). 재시작 뒤에도 여기서 이어 간다. 수령은 등록을 넘지 못한다
+            if it.get("status") == "waiting" and "got" not in p:
+                # N6 전의 저장본(백업 복원 포함) — 그때의 waiting 은 **등록을 다 마친** 카드였다. done 이 비어 있어도
+                # 남은 등록으로 읽으면 이미 결제된 가공을 또 건다 — 다 건 것으로 본다
+                p["done"] = it["count"]
+            p["done"] = min(p["done"], it["count"])
+            p["got"] = min(p["done"], max(0, _n(p.get("got"))))
+        if it["type"] == "craft":
+            p["done"] = min(p["done"], it["count"])
+            p["calls"] = max(0, _n(p.get("calls")))   # 나눠 부른 제작(N7)의 성공한 호출 수
         # passesPlanned 는 **저장된 값을 믿지 않고 늘 다시 센다** — 수량에서 바로 나오는 값이라 잃을 것이 없다
         p["passesPlanned"] = (gather_runs(it) if it["type"] == "gather"
                               else alter_passes(it["count"], it.get("collect")) if it["type"] == "alter"
+                              else craft_plan(it, p) if it["type"] == "craft"
                               else 0 if it["type"] in FREE_CARD_TYPES else 1)   # 연주·알림은 호출이 없다
         if it["type"] == "play":
             if it.get("mode") not in PLAY_MODES + (PLAY_MODE_LEGACY,):
@@ -1421,8 +1587,10 @@ class Queue:
                     prev["count"] = total
                     p = prev.setdefault("progress", {})
                     if typ == "alter":
-                        # 등록 total 회 (+ 수령 1회 — 「걸기만」이 아닐 때). 합칠 대상은 collect 가 같은 항목뿐이다
+                        # 등록 total 회 + 수령 왕복(7건마다 한 번 — 「걸기만」은 칸을 비울 때만). 합칠 대상은 collect 가 같은 항목뿐이다
                         p["passesPlanned"] = alter_passes(total, prev.get("collect"))
+                    else:
+                        p["passesPlanned"] = craft_plan(prev, p)   # 시설 상한으로 나눈 호출 수 (N7)
                     prev["log"].append({"t": time.time(), "msg": f"합침: +{count}회 → {total}회"})
                     self._save()
                     plan = {"passesPlanned": p.get("passesPlanned", 1), "have": p.get("have", 0),
@@ -1430,7 +1598,8 @@ class Queue:
                     return {"ok": True, "item": dict(prev), "plan": plan, "merged": True, "added": count}
                 it.update(recipeId=r.get("id", rid), count=count,
                           progress={"done": 0, "have": _have(snap, name), "passes": 0, "totalDone": 0,
-                                    "passesPlanned": 1 if typ == "craft" else alter_passes(count, collect),
+                                    "passesPlanned": (craft_calls(count, limits_get(_s(r.get("id", rid))))
+                                                      if typ == "craft" else alter_passes(count, collect)),
                                     "per": _n(r.get("per"), 1)})
                 if typ == "alter":
                     it["collect"] = collect
@@ -1683,9 +1852,10 @@ class Queue:
             elif spec["type"] == "alter":
                 # 날개를 쓰는 것은 등록뿐이다 — 수령(complete_altering_work)은 호출이지만 소모가 없다
                 wing_calls += spec["count"]
-                calls += alter_passes(spec["count"], spec.get("collect"))
+                calls += spec["count"] + alter_trips(spec["count"], spec.get("collect"))   # 등록 + 수령 왕복 (alter_calls 와 같은 셈)
             else:
-                calls += 1; wing_calls += 1
+                n = craft_calls(spec["count"], limits_get(spec.get("recipeId", "")))   # 시설 상한으로 나눈 호출 (N7)
+                calls += n; wing_calls += n
             if dry_run:
                 added.append(spec)
                 continue
@@ -1756,8 +1926,10 @@ class Queue:
                     changed.append({"wait": "완료까지 기다림", "later": "등록 후 다음으로",
                                     "none": "걸기만 (수령 안 함)"}[it["collect"]])
                 if it["type"] == "alter":
-                    # 횟수·모드 둘 중 무엇이 바뀌었든 마지막에 한 번 다시 센다 — 모드에 따라 수령 1회가 붙고 빠진다
+                    # 횟수·모드 둘 중 무엇이 바뀌었든 마지막에 한 번 다시 센다 — 모드에 따라 수령 왕복이 붙고 빠진다
                     p["passesPlanned"] = alter_passes(_n(it.get("count"), 1), it.get("collect"))
+                if it["type"] == "craft":
+                    p["passesPlanned"] = craft_plan(it, p)   # 시설 상한으로 나눈 호출 수 (N7)
             if changed:
                 self._log(it, "수정: " + ", ".join(changed))
                 self._save()
@@ -2062,7 +2234,7 @@ class Queue:
     def _fresh_copy(it: dict) -> dict:
         """복제용 자식 한 장 — 무엇을 할지(수량·레시피)만 남기고 진행·기록은 전부 새것으로."""
         out = {k: v for k, v in it.items() if k not in ("id", "status", "progress", "log", "error", "message", "precheck", "precheck_bf",
-                                                   "precheck_combat_warn")}
+                                                   "precheck_combat_warn", "regStop")}
         p = it.get("progress") if isinstance(it.get("progress"), dict) else {}
         out.update(id=uuid.uuid4().hex[:10], status="pending", log=[],
                    progress={"done": 0, "have": _n(p.get("have")), "passes": 0, "totalDone": 0,
@@ -2141,24 +2313,25 @@ class Queue:
                      {"command": "get_altering_works", "text": "수령 뒤 대기열 다시 읽기"}]
             calls = 1          # 수령은 날개를 쓰지 않는다
         elif it["type"] == "craft":
-            acts += [{"command": "execute_crafting", "text": f"「{it['name']}」 {it['count']}회 제작 (산출 {it['count'] * _n(p.get('per'), 1)}개), 시설까지 이동 포함"}]
-            calls = wings = 1
+            left = max(0, _n(it.get("count"), 1) - _n(p.get("done")))
+            mc = limits_get(it.get("recipeId", "")) if it.get("recipeId") else None
+            n = craft_calls(left, mc)
+            split = (f" — 시설 상한 {mc}회씩 {n}번 호출 (호출마다 날개 {WINGS_PER_CALL}개)" if n > 1
+                     else " — 상한을 넘으면 거절 답(maxCount)을 보고 그 자리에서 나눠 잇습니다" if not mc else "")
+            acts += [{"command": "execute_crafting", "text": f"「{it['name']}」 {left}회 제작 (산출 {left * _n(p.get('per'), 1)}개), 시설까지 이동 포함{split}"}]
+            calls = wings = n   # 나눠 부르면 그 수만큼 날개가 든다 (N7). 상한을 모르면 한 번으로 센다
         else:
-            if it.get("status") == "waiting":
-                acts += [{"command": "get_altering_works", "text": "완료 여부 확인"},
-                         {"command": "complete_altering_work", "text": f"「{it['name']}」 완료분 수령 (같은 시설 전부)"}]
-                calls = 1      # 수령만 남았다 — 날개 없음
-            else:
-                mode = alter_mode(it.get("collect"))
-                acts += [{"command": "execute_altering", "text": f"「{it['name']}」 가공 {it['count']}건 등록 (건마다 1회 호출), 시설까지 이동 포함"},
-                         {"command": "get_altering_works", "text": "등록 뒤 남은 시간 확인 — "
-                          + {"wait": "완료까지 그 자리에서 기다린 뒤 수령",
-                             "later": "곧바로 다음 항목으로, 완료되면 수령",
-                             "none": "걸기만 — 수령하지 않고 끝낸다 (수령은 따로 담는다)"}[mode]}]
-                if mode != "none":
-                    acts.append({"command": "complete_altering_work", "text": f"완료되면 「{it['name']}」 수령 (날개 소모 없음)"})
-                wings = it["count"]
-                calls = alter_passes(wings, mode)   # 등록 n회 (+ 「걸기만」이 아니면 나중에 수령 1회)
+            mode = alter_mode(it.get("collect"))
+            calls, wings = alter_calls(it)   # 남은 등록(날개) + 수령 왕복(날개 0) — 화면과 같은 규칙 (N6)
+            if wings:
+                acts += [{"command": "get_altering_works", "text": "등록마다 먼저 그 시설의 칸 수를 읽는다 (읽기 · 날개 0) — 칸이 찼으면 부르지 않는다"},
+                         {"command": "execute_altering", "text": f"「{it['name']}」 가공 {wings}건 등록 (건마다 1회 호출 · 빈 칸만큼), 시설까지 이동 포함 — "
+                          + {"wait": "칸이 차면 그 자리에서 완료를 기다렸다 받고 이어서 건다",
+                             "later": "칸이 차면 다음 항목으로 넘어가고, 완료가 모이면 받고 이어서 건다",
+                             "none": "걸기만 — 칸이 찰 때만 받아 비우고, 다 걸면 끝낸다"}[mode]}]
+            if calls > wings:
+                acts.append({"command": "complete_altering_work",
+                             "text": f"완료가 모이면(설정 「n개 이상 모이면 받으러 가기」) 「{it['name']}」 시설에서 수령 — 약 {calls - wings}번 (날개 소모 없음)"})
         return {"id": it["id"], "type": it["type"], "name": it["name"], "status": it["status"],
                 "passesPlanned": _n(p.get("passesPlanned")), "actions": acts,
                 "calls": calls, "wingCalls": wings, "detail": card_text(it),
@@ -2228,7 +2401,9 @@ class Queue:
                 wing_calls += r["wingCalls"]
                 tree.append({"kind": "card", "id": r["id"], "type": r["type"], "name": r["name"],
                              "detail": r["detail"], "calls": r["calls"]})
-        over = [r for r in rows if r["passesPlanned"] > max_passes]
+        # 안전 상한은 **채집**에만 댄다. 가공 등록·나눠 부르는 제작은 호출 수가 수량에서 정해지고(무한히 늘지 않는다)
+        # 날개는 날개 차단기가 따로 지킨다 — 가공 63건·제작 600회가 상한(50)에 막히던 것을 푼다.
+        over = [r for r in rows if r.get("type") not in PASS_EXEMPT and r["passesPlanned"] > max_passes]
         # 지금 캐릭터 상태 — 확인창이 "이 상태로는 거부된다"를 미리 보여줄 수 있게 실시간으로 읽는다 (캐시 아님, 잠금 밖에서 1회)
         activity = None
         act_warn = []
@@ -2309,11 +2484,14 @@ class Queue:
             if not todo and not rounds_left:
                 return {"ok": False, "error": "empty", "message": "실행할 항목이 없습니다."}
             max_passes = _n(settings.get("queue_max_passes"), 50)
-            over = [x["name"] for x in todo if _n(x.get("progress", {}).get("passesPlanned")) > max_passes]
+            over = [x["name"] for x in todo if x.get("type") not in PASS_EXEMPT and _n(x.get("progress", {}).get("passesPlanned")) > max_passes]
             if over:
                 return {"ok": False, "error": "max_passes", "message": f"안전 상한({max_passes}회)을 넘습니다: " + ", ".join(over)}
             # 날개 차단기 — 날개를 쓸 일이 있을 때만 (수령만 남았으면 날개 0 이라 막을 이유가 없다)
-            if rounds_left or any(x.get("status") == "pending" and x.get("type") in ("gather", "craft", "alter") for x in todo):
+            # 걸다 만 가공(waiting · 남은 등록)도 날개를 쓴다 (N6)
+            if rounds_left or any((x.get("status") == "pending" and x.get("type") in ("gather", "craft", "alter"))
+                                  or (x.get("type") == "alter" and x.get("status") == "waiting" and alter_calls(x)[1] > 0)
+                                  for x in todo):
                 refused = self._wing_gate(settings)
                 if refused and not override_breaker:
                     return dict(refused, overridable=True)   # 화면이 「그래도 시작할까요?」를 묻는다
@@ -2534,6 +2712,12 @@ class Queue:
             p.pop("bag0", None)   # 회차마다 새로 센다 — 첫 회 전 가방을 다시 읽는다
         elif it["type"] == "alter":
             p["passesPlanned"] = alter_passes(_n(it.get("count"), 1), it.get("collect"))
+            p["got"] = 0                           # 등록·수령은 회차 단위 (N6)
+            p.pop("slot", None); p.pop("cap", None)
+            it.pop("regStop", None)
+        elif it["type"] == "craft":
+            p["calls"] = 0
+            p["passesPlanned"] = craft_plan(it, p)
 
     def _run(self, settings: dict) -> None:
         """루트를 한 바퀴. 그룹이면 _run_group, 아니면 카드 1회.
@@ -2617,7 +2801,9 @@ class Queue:
         with self.lock:
             it["status"] = "running"
             self.current = it["id"]
-        self._collect_ready(settings)          # 항목 전환 시: 완료된 가공 먼저 수령
+        self._collect_ready(settings)          # 항목 전환 시: 가공 돌봄 — 모였으면 수령 · 빈 칸에 남은 등록 (N6)
+        with self.lock:
+            self.current = it["id"]            # 돌봄이 가리켰던 커서를 이 카드로 되돌린다
         # 그 수령이 보드(치명·오류 시 정지)나 이 그룹(그룹의 오류 시 정지)을 세웠으면 **이 카드는 시작하지 않는다.**
         # 전에는 stopReason 만 적고 그대로 돌려서, 끝난 뒤 화면이 「오류 시 정지로 멈췄습니다」라고 거짓말했다.
         halted = self._stop.is_set() or (self._group_halt is not None and self._group_halt == self.current_group)
@@ -2956,6 +3142,12 @@ class Queue:
             time.sleep(DEAD_RETRY_WAIT)
             if not self._stop.is_set():
                 r = self._exec_once(command, body, it)
+        # 마지막 실행 명령이 가공 등록이었나 (N6) — 그 직후 다른 명령이 unknown_modal 이면 「가공 대기열 가득」 창으로 본다.
+        # 실패한 답은 바꾸지 않는다 — 막힌 그 명령이 바로 판단할 대상이다
+        if command == "execute_altering":
+            self._alter_recent = bool(r.ok)
+        elif r.ok:
+            self._alter_recent = False
         # 날개 차단기 — 마지막 답 하나만 센다 (사망 거절은 날개 0 이라 첫 시도를 셀 것이 없다). 기록 탓에 작업이 죽지 않게
         try:
             self._wing_record(command, it, r)
@@ -3558,6 +3750,10 @@ class Queue:
         """실행 응답 실패 처리 공통: 정지 중 canceled 면 stopped, 아니면 error(+blocked kind / invalid_count maxCount)."""
         if self._stop.is_set() and r.error in ("canceled", "timeout"):
             it["status"] = "stopped"; self._log(it, "사용자 정지 (행동 취소됨)"); return
+        if r.error == "blocked" and body.get("kind") == "unknown_modal" and self._alter_recent:
+            # 가공을 건 바로 뒤에 막혔다 — 「가공 대기열이 가득 찼습니다」 창으로 본다 (실측: 그 창은 CLI 로 안 닫히고
+            # 떠 있는 동안 실행 명령이 전부 막힌다). 자동으로 닫지 않고 보드를 세워 사람에게 닫아 달라고 한다
+            self._alter_full_stop(it, r=r); return
         extra = ""
         if r.error == "blocked" and body.get("kind"):
             extra = f" kind={body.get('kind')}"
@@ -4222,84 +4418,259 @@ class Queue:
         self._event("gather", it.get("id"), f"「{it.get('name')}」 넘겨준 채집이 아직 돕니다 — stop_action 을 다시 보냅니다")
         self._stop_retry(it, o["fin"], {}, 1)
 
-    # 제작: 한 번에 count 회 (invalid_count 면 그 자리에서 오류로 두고 maxCount 를 알려준다)
+    # 제작: count 회를 시설 상한(maxCount)으로 나눠 여러 번 부른다 (N7). 상한을 모르면 한 번에 보내 보고, invalid_count 의
+    # maxCount 를 배우면(limits_set) 그 자리에서 나눠 잇는다 — 그 거절은 시작 전이라 날개 0 이다. 호출마다 날개 5.
+    # 진행은 카드에 남는다: done(제작한 횟수) · calls(성공한 호출 수) — ■ 정지 뒤 ▶ 시작은 남은 횟수부터 잇는다.
     def _run_craft(self, it: dict) -> None:
         p = it["progress"]
         if self._stopped(it):
             return
-        self._log(it, f"제작 시작 {it['count']}회")
-        r = self._exec("execute_crafting", {"displayName": it["name"], "craftCount": it["count"]}, it)
-        p["passes"] += 1
-        body = r.body if isinstance(r.body, dict) else {}
-        if not r.ok:
-            mc = _n(body.get("maxCount"))
-            if r.error == "invalid_count" and mc > 0 and it.get("recipeId"):   # 시설 상한 학습 → 다음부터 「최대」가 이 값으로 잡힌다
-                limits_set(it["recipeId"], mc)
-                self._fail(it, "invalid_count", f"{r.message or ERROR_KO['invalid_count']} 시설 상한 {mc}회 — 다음부터 최대 버튼이 {mc} 으로 잡힙니다")
+        total = max(1, _n(it.get("count"), 1))
+        rid = _s(it.get("recipeId"))
+        mc = limits_get(rid) if rid else None
+        p["done"] = min(total, max(0, _n(p.get("done"))))
+        p["calls"] = max(0, _n(p.get("calls")))
+        p["passesPlanned"] = craft_plan(it, p)
+        if p["done"]:
+            self._log(it, f"제작 이어서 — {p['done']}/{total}회 끝남, 남은 {total - p['done']}회")
+        else:
+            self._log(it, f"제작 시작 {total}회" + (f" — 시설 상한 {mc}회씩 {p['passesPlanned']}번" if p["passesPlanned"] > 1 else ""))
+        last = {}
+        while p["done"] < total:
+            if self._stopped(it):
                 return
-            self._exec_failed(it, r, body); return
-        if body.get("result") == "stopped_by_user":
-            # 게임 쪽에서 이 제작 하나가 멈춘 것 — 보드를 세우지 않는다 (채집 쪽 주석 참고)
-            if self._stop.is_set():
-                it["status"] = "stopped"; self._log(it, "사용자 정지 중 회신: result=stopped_by_user"); return
-            self._fail(it, "stopped_by_user", ERROR_KO["stopped_by_user"]); return
-        p["done"] = _n(body.get("craftCount"), it["count"])
+            if p["passes"] >= COUNT_MAX:   # 마지막 빗장 — 호출마다 날개 5
+                self._fail(it, "max_passes", f"{ERROR_KO['max_passes']} (제작 호출 {p['passes']}회)"); return
+            left = total - p["done"]
+            n = min(mc, left) if mc else left
+            r = self._exec("execute_crafting", {"displayName": it["name"], "craftCount": n}, it)
+            p["passes"] += 1
+            body = r.body if isinstance(r.body, dict) else {}
+            if not r.ok:
+                got_mc = _n(body.get("maxCount"))
+                if r.error == "invalid_count" and 0 < got_mc < n:
+                    # 시설 상한을 배웠다 — 나눠서 곧바로 잇는다 (카드를 실패로 두지 않는다). 같은 레시피의 다른 카드도 고쳐 센다
+                    if rid:
+                        limits_set(rid, got_mc)
+                        self._relimit(rid)
+                    mc = got_mc
+                    p["passesPlanned"] = craft_plan(it, p)
+                    self._log(it, f"시설 상한 {got_mc}회 — {got_mc}회씩 나눠 {p['passesPlanned']}번 부릅니다 "
+                                  f"(거절은 시작 전이라 날개 0 · 다음부터 최대 버튼도 {got_mc})")
+                    continue
+                if r.error == "invalid_count" and got_mc > 0 and rid:   # 상한보다 적게 보냈는데도 거절 — 배우기만 하고 멈춘다
+                    limits_set(rid, got_mc)
+                    self._relimit(rid)
+                self._exec_failed(it, r, body); return
+            if body.get("result") == "stopped_by_user":
+                # 게임 쪽에서 이 제작 하나가 멈춘 것 — 보드를 세우지 않는다 (채집 쪽 주석 참고)
+                if self._stop.is_set():
+                    it["status"] = "stopped"; self._log(it, "사용자 정지 중 회신: result=stopped_by_user"); return
+                self._fail(it, "stopped_by_user", ERROR_KO["stopped_by_user"]); return
+            made = _n(body.get("craftCount"), n) or n
+            p["done"] = min(total, p["done"] + made)
+            p["calls"] += 1
+            p["passesPlanned"] = craft_plan(it, p)
+            last = body
+            if p["passesPlanned"] > 1:
+                self._log(it, f"{p['calls']}/{p['passesPlanned']}번 · {p['done']}/{total}회 — result={body.get('result')} {body.get('cost') or ''}".rstrip())
+                with self.lock:
+                    self._save()
         self._refresh_bag(it)
-        self._done(it, f"완료 회신: result={body.get('result')}, {p['done']}회 제작 (산출 {p['done'] * _n(p.get('per'), 1)}개, 가방 {p['have']}) {body.get('cost') or ''}".rstrip())
+        if p["calls"] > 1:
+            self._done(it, f"완료: {p['calls']}번 나눠 {p['done']}회 제작 (산출 {p['done'] * _n(p.get('per'), 1)}개, 가방 {p['have']})")
+        else:
+            self._done(it, f"완료 회신: result={last.get('result')}, {p['done']}회 제작 (산출 {p['done'] * _n(p.get('per'), 1)}개, 가방 {p['have']}) {last.get('cost') or ''}".rstrip())
 
-    # 가공: 등록 count 건 → 모드에 따라 그 자리에서 done(걸기만) / waiting(나중에 수령) / 완료까지 대기 후 수령
+    def _relimit(self, rid: str) -> None:
+        """시설 상한을 새로 배웠다 — 같은 레시피의 대기 카드들이 예상 호출 수를 다시 센다 (화면·확인창의 날개 수)."""
+        with self.lock:
+            for x in self._leaves():
+                if x.get("type") == "craft" and _s(x.get("recipeId")) == rid and isinstance(x.get("progress"), dict):
+                    x["progress"]["passesPlanned"] = craft_plan(x, x["progress"])
+
+    # 가공 (N6): **등록 직전마다** 그 시설의 칸을 게임 대기열(get_altering_works, 읽기 · 날개 0)로 세어 빈 칸만큼만 건다.
+    # 칸이 차면 오류가 아니다 — waiting(작업 중 열 · 가공 대기)으로 두고 다음 항목으로 넘어간다. 남은 등록은
+    # 완료가 모여 받으러 간 뒤 빈 칸에 건다 (_collect_ready — 카드 사이·회차 끝·체인 끝).
+    #   none(걸기만): 다 걸면 그 자리에서 done (끝의 몫은 받지 않는다). 칸이 차서 남았으면 waiting — 칸을 비울 만큼만 받는다
+    #   later        : waiting → 완료가 모이면 받고 이어서 건다, 다 받으면 done
+    #   wait         : 같은 규칙으로 그 자리에서 끝까지 (_wait_and_collect)
+    # 진행은 앱이 세어 카드에 저장한다 — 등록(done) · 수령(got). 칸은 늘 게임 대기열의 그 시설 건수로 판단한다.
     def _run_alter(self, it: dict, settings: dict, wait_alter: bool = False) -> None:
         # 항목 옵션 collect 가 우선이다. 그룹 설정(waitAlter)은 **later 인 자식만** wait 로 올린다 —
         # 사용자가 「걸기만」(none)이라고 명시한 것을 그룹 설정이 뒤집으면 안 된다.
         mode = alter_mode(it.get("collect"))
         wait = mode == "wait" or (wait_alter and mode == "later")
         p = it["progress"]
-        while p["done"] < it["count"]:
-            if self._stopped(it):
-                return
+        p["done"] = min(it["count"], max(0, _n(p.get("done"))))
+        p["got"] = min(p["done"], max(0, _n(p.get("got"))))
+        if self._stopped(it):
+            return
+        res = self._alter_register(it, settings)
+        if res == "stop":
+            self._stopped(it)
+            return
+        if res != "ok":          # 실패 — 상태·안내는 이미 적혔다
+            return
+        left = it["count"] - p["done"]
+        if mode == "none" and left == 0:
+            # 걸기만: 등록을 마쳤으면 그 자리에서 끝낸다. waiting 으로 두면 「작업 중」 열에 남고
+            # 체인 끝에 기다린다 — 「걸기만」의 뜻과 다르다.
+            self._done(it, f"가공 {p['done']}건 등록 완료 — 걸기만(수령하지 않습니다)")
+            return
+        it["status"] = "waiting"
+        p.pop("collectRetry", None); p.pop("collectRetryAt", None)   # 새로 등록했다 — 지난 「수령분 없음」 횟수는 무관
+        slot = f"칸 {p.get('slot')}/{p.get('cap')}" if p.get("cap") is not None else "칸 모름"
+        if left:
+            self._log(it, f"{slot} — 시설이 차서 남은 {left}건은 완료를 받아 칸이 비면 겁니다 · "
+                          + ("그 자리에서 기다립니다" if wait else "다음 항목으로 넘어갑니다"))
+        else:
+            self._log(it, f"{p['done']}건 등록 · {slot} — "
+                          + ("완료까지 기다립니다" if wait else "다음 항목으로 넘어가고, 완료가 모이면 수령합니다"))
+        if wait:
+            self._wait_and_collect([it], settings)
+
+    def _alter_fac(self, it: dict, rows: list) -> str:
+        """그 가공의 시설 이름 — 게임 대기열에 같은 이름의 작업이 있으면 그 FacilityName(기억해 둔다),
+        없으면 카드·기억(alter_slots.json)·레시피 DB. 모르면 빈 글."""
+        p = it["progress"]
+        fac = next((x["facility"] for x in rows if x["name"] == it["name"] and x["facility"]), "")
+        if fac:
+            alter_facility_set(it["name"], fac)
+        else:
+            fac = _s(p.get("facility")) or alter_facility_get(it["name"])
+        if fac:
+            p["facility"] = fac
+        return fac
+
+    def _alter_look(self, it: dict, rows: list | None = None) -> dict | None:
+        """그 카드 시설의 칸 사정. rows 가 없으면 get_altering_works 를 읽는다(날개 0) — 실패면 None (self._look_err).
+        칸 수는 기억값(없으면 7). 게임이 그보다 많이 들고 있으면 칸이 늘어난 것이다 — 본 만큼으로 올려 기억한다."""
+        if rows is None:
+            w = self._read(it, "get_altering_works", "")
+            if not w.ok:
+                self._look_err = w
+                return None
+            store.set_cache("works", w.body)
+            rows = work.works(w.body)["works"]
+        p = it["progress"]
+        fac = self._alter_fac(it, rows)
+        here = [x for x in rows if fac and x["facility"] == fac]
+        cap = alter_cap_get(fac) if fac else ALTER_SLOTS_DEFAULT
+        if fac and len(here) > cap:
+            cap = len(here)
+            alter_cap_set(fac, cap)
+            self._log(it, f"「{fac}」 칸이 {cap}건까지 차 있습니다 — 칸 수를 {cap}으로 기억합니다")
+        mine = [x for x in (here if fac else rows) if x["name"] == it["name"]]
+        if fac:
+            p["slot"], p["cap"] = len(here), cap
+        done_here = [x for x in here if x["done"]]
+        return {"rows": rows, "fac": fac, "used": len(here), "cap": cap,
+                "facDone": len(done_here),
+                "mine": len(mine), "mineDone": sum(1 for x in mine if x["done"]),
+                # 수령 명령의 displayName — 그 시설에서 **완료된** 작업 이름 (진행 중인 이름이면 not_completed_yet). 제 이름이 먼저
+                "doneName": next((x["name"] for x in sorted(done_here, key=lambda x: x["name"] != it["name"])), ""),
+                "next": min([x["left"] for x in (here or mine) if not x["done"]], default=None)}
+
+    def _alter_register(self, it: dict, settings: dict, soft: bool = False) -> str:
+        """빈 칸만큼 남은 등록을 건다 → "ok"(다 걸었거나 칸이 찼다) · "fail"(상태는 적혔다) · "stop"(■ 정지).
+        **매 등록 직전에 대기열을 읽는다** — 앱이 센 칸 수를 믿지 않는다(사용자가 직접 건 가공·다른 카드·재시작·수령 사이 완료).
+        soft — 카드 사이 돌봄(_collect_ready)에서 부를 때: 읽기 실패는 카드를 끝내지 않고 다음 기회로 미룬다."""
+        p = it["progress"]
+        while p["done"] < it["count"] and not it.get("regStop"):
+            if self._stop.is_set():
+                return "stop"
             if p["passes"] >= COUNT_MAX:   # 마지막 빗장 — 수량은 add/update/_load_card 가 이미 자르지만, 등록은 회당 날개 5 다
-                self._fail(it, "max_passes", f"{ERROR_KO['max_passes']} (가공 등록 {p['passes']}회)"); return
-            self._log(it, f"가공 등록 {p['done'] + 1}/{it['count']}")
+                self._fail(it, "max_passes", f"{ERROR_KO['max_passes']} (가공 등록 {p['passes']}회)"); return "fail"
+            look = self._alter_look(it)
+            if look is None:
+                if soft:
+                    self._log(it, "대기열을 읽지 못해 이번에는 걸지 않습니다 — 다음 기회에 다시 봅니다")
+                    return "ok"
+                self._read_failed(it, self._look_err, "get_altering_works 실패"); return "fail"
+            if look["fac"] and look["used"] >= look["cap"]:
+                self._log(it, f"칸 {look['used']}/{look['cap']} — 「{look['fac']}」이 찼습니다. 부르지 않습니다 "
+                              f"(남은 {it['count'] - p['done']}건)")
+                return "ok"
+            if not look["fac"]:
+                self._log(it, "이 가공의 시설을 아직 모릅니다 — 한 건 걸고 대기열에서 시설을 배웁니다")
+            self._log(it, f"가공 등록 {p['done'] + 1}/{it['count']}"
+                          + (f" · 칸 {look['used']}/{look['cap']}" if look["fac"] else ""))
             r = self._exec("execute_altering", {"displayName": it["name"]}, it)
             p["passes"] += 1
             body = r.body if isinstance(r.body, dict) else {}
             if not r.ok:
-                self._exec_failed(it, r, body); return
+                if r.error == "blocked" and body.get("kind") == "unknown_modal":
+                    # 칸을 셌는데도 막혔다 — 게임에 「가공 대기열이 가득 찼습니다」 창(날개 5 는 이미 빠졌다, 실측)
+                    self._alter_full_stop(it, look["fac"], look["used"], r)
+                    return "fail"
+                if self._stop.is_set() and r.error in ("canceled", "timeout"):
+                    return "stop"
+                self._exec_failed(it, r, body)
+                self._keep_outstanding(it)
+                return "fail"
             if body.get("result") == "stopped_by_user":
                 # 게임 쪽에서 이동이 멈춘 것 — 보드를 세우지 않는다 (채집 쪽 주석 참고)
                 if self._stop.is_set():
-                    it["status"] = "stopped"; self._log(it, "사용자 정지 중 회신: result=stopped_by_user (이동)"); return
-                self._fail(it, "stopped_by_user", ERROR_KO["stopped_by_user"]); return
+                    self._log(it, "사용자 정지 중 회신: result=stopped_by_user (이동)")
+                    return "stop"
+                self._fail(it, "stopped_by_user", ERROR_KO["stopped_by_user"])
+                self._keep_outstanding(it)
+                return "fail"
             p["done"] += 1
+            if look["fac"]:
+                p["slot"] = look["used"] + 1
             self._log(it, f"등록됨: result={body.get('result')} {body.get('cost') or ''}".rstrip())
-        if mode != "none":
-            it["status"] = "waiting"
-            p.pop("collectRetry", None); p.pop("collectRetryAt", None)   # 새로 등록했다 — 지난 「수령분 없음」 횟수는 무관
-        w = self._call("get_altering_works", "", READ_TIMEOUT)   # 읽기 — 화면의 가공 대기열 카드를 등록 직후 모습으로 갱신
-        left = 0
-        if w.ok:
-            store.set_cache("works", w.body)
-            mine = [x for x in work.works(w.body)["works"] if x["name"] == it["name"]]
-            left = max([x["left"] for x in mine], default=0)
-            self._log(it, f"대기열 {len(mine)}건, 최장 {left}초 남음 — "
-                          + ("완료까지 기다립니다" if wait else
-                             "걸기만 — 수령하지 않습니다 (수령은 「수령」 항목으로 따로 담으세요)" if mode == "none" else
-                             "다음 항목으로 넘어가고, 완료되면 수령합니다"))
-        else:
-            self._log(it, "대기열 확인 실패 — "
-                          + ("걸기만 모드라 수령하지 않습니다" if mode == "none" else "완료 여부는 다음 확인 때 봅니다"))
-        if mode == "none":
-            # 걸기만: 등록을 마쳤으면 그 자리에서 끝낸다. waiting 으로 두면 「작업 중」 열에 남고
-            # 체인 끝에 최대 30분을 기다린다 — 「걸기만」의 뜻과 다르다.
-            self._done(it, f"가공 {p['done']}건 등록 완료 — 걸기만(수령하지 않습니다)")
+            with self.lock:
+                self._save()
+        return "ok"
+
+    def _keep_outstanding(self, it: dict) -> None:
+        """등록이 (치명이 아닌 이유로) 실패했는데 이미 건 작업이 남아 있다 — 카드를 waiting 으로 되돌려 그것은 마저 받는다.
+        남은 등록은 걸지 않고(regStop), 다 받으면 그 오류로 닫는다. 「걸기만」은 받지 않으므로 그대로 실패다."""
+        p = it["progress"]
+        if it.get("status") != "error" or is_fatal(it.get("error")) or alter_mode(it.get("collect")) == "none":
             return
-        if wait:
-            self._wait_and_collect([it], settings)
+        if _n(p.get("done")) <= _n(p.get("got")):
+            return
+        it["regStop"] = {"error": it.get("error"), "message": it.get("message") or ""}
+        it["status"] = "waiting"
+        it.pop("error", None); it.pop("message", None)
+        self._log(it, f"남은 {it['count'] - _n(p.get('done'))}건은 걸지 않습니다({it['regStop']['error']}) — "
+                      f"이미 건 {_n(p.get('done')) - _n(p.get('got'))}건은 마저 받고 그 오류로 닫습니다")
+
+    def _alter_full_stop(self, it: dict, fac: str = "", used: int = 0, r=None) -> None:
+        """게임에 「가공 대기열이 가득 찼습니다」 창이 떴다 — CLI 로 닫히지 않는다(실측). 자동으로 닫으려 하지 않고 보드를 세운다.
+        가공 등록에서 막혔으면 그때 센 건수를 그 시설의 칸 수로 기억한다 (칸 수는 시설 레벨마다 다를 수 있다).
+        카드는 실패가 아니라 이어 갈 자리에 둔다 — 건 것이 있는 가공은 waiting, 그 밖은 stopped(▶ 시작이 다시 집는다)."""
+        if fac and used > 0 and used != alter_cap_get(fac):
+            alter_cap_set(fac, used)
+            self._log(it, f"「{fac}」 칸 수를 {used}로 기억합니다 (그 건수에서 대기열이 가득 찼다고 막혔다)")
+        msg = ERROR_KO["alter_full"]
+        raw = getattr(r, "message", "") if r is not None else ""
+        p = it.get("progress") if isinstance(it.get("progress"), dict) else {}
+        if it.get("type") == "alter" and _n(p.get("done")) > 0:
+            it["status"] = "waiting"
+        else:
+            it["status"] = "stopped"
+            it["message"] = msg
+        it.pop("error", None)
+        self._log(it, f"blocked·unknown_modal — {msg}" + (f" · 원문: {raw}" if raw else ""))
+        self._alter_recent = False
+        self.stop_reason = self.stop_reason or "fatal:alter_full"
+        self.last_error = {"id": it.get("id"), "name": it.get("name") or "", "type": it.get("type") or "",
+                           "error": "alter_full", "message": msg, "at": time.time()}
+        self._event("stop", it.get("id"), "보드 정지 — " + msg)
+        self._stop.set()
 
     # 수령: complete_altering_work 1회 — 독립 「수령」 항목과 가공 항목의 2단계가 같은 함수를 쓴다
-    def _exec_collect(self, it: dict):
-        """complete_altering_work 를 부르고, 성공하면 가방·대기열 캐시를 다시 읽는다. (응답, body) 를 돌려준다."""
-        r = self._exec("complete_altering_work", {"displayName": it["name"]}, it)
+    def _exec_collect(self, it: dict, display: str = ""):
+        """complete_altering_work 를 부르고, 성공하면 가방·대기열 캐시를 다시 읽는다. (응답, body) 를 돌려준다.
+        display — 보낼 displayName (그 시설에서 **완료된** 작업 이름). 없으면 카드 이름.
+        수령 뒤 읽은 대기열은 self._post_rows 에 둔다 (못 읽었으면 None) — 가공 카드가 받은 건수를 센다."""
+        name = display or it["name"]
+        self._post_rows = None
+        r = self._exec("complete_altering_work", {"displayName": name}, it)
         it["progress"]["passes"] += 1
         body = r.body if isinstance(r.body, dict) else {}
         if r.ok:
@@ -4307,11 +4678,12 @@ class Queue:
             w = self._call("get_altering_works", "", READ_TIMEOUT)   # 수령 뒤 대기열 갱신 — 화면의 대기열 카드가 바로 줄어들게
             if w.ok:
                 store.set_cache("works", w.body)
+                self._post_rows = work.works(w.body)["works"]
             # **ok 회신을 그대로 믿지 않는다.** 직접 정지·이동 실패면 게임은 ok 에 result=stopped_by_user·collected 0 으로 답한다.
             # 회신이 끊김이거나, 받은 것이 0 인데 그 시설(이름)에 완료분이 아직 남아 있으면 **수령이 안 된 것**.
             left = 0
             if w.ok:
-                left = sum(1 for x in work.works(w.body)["works"] if x["done"] and x["name"] == it["name"])
+                left = sum(1 for x in work.works(w.body)["works"] if x["done"] and x["name"] == name)
             if body.get("result") in WING_WASTE_RESULTS or (_n(body.get("collected")) <= 0 and left > 0):
                 self._log(it, f"수령 회신을 믿지 않음: result={body.get('result')} collected={_n(body.get('collected'))} · 시설에 완료분 {left}건 남음")
                 import dataclasses
@@ -4319,7 +4691,13 @@ class Queue:
                                         message=ERROR_KO["collect_interrupted"])
                 return r, dict(body, collected=0)
             rw = body.get("rewards") if isinstance(body.get("rewards"), list) else []
-            summ = ", ".join(f"{x.get('DisplayName')} ×{x.get('Count')}" for x in rw if isinstance(x, dict))[:200]
+            # 실측 회신은 {Name, Amount} 이다 (예전 가정 {DisplayName, Count} 도 받는다). 같은 이름은 합쳐 한 번만 적는다.
+            tot: dict = {}
+            for x in rw:
+                if isinstance(x, dict):
+                    nm = str(x.get("Name") or x.get("DisplayName") or "?")
+                    tot[nm] = tot.get(nm, 0) + _n(x.get("Amount"), _n(x.get("Count")))
+            summ = ", ".join(f"{k} ×{v}" for k, v in tot.items())[:200]
             crit = body.get("criticalRewards") if isinstance(body.get("criticalRewards"), list) else []
             self._log(it, f"수령 회신: collected {_n(body.get('collected'))} · rewards {summ or '없음'}"
                           + (f" · critical {len(crit)}건" if crit else "") + (f" {body.get('cost')}" if body.get("cost") else ""))
@@ -4344,25 +4722,93 @@ class Queue:
         self._done(it, f"수령 완료 (collected={p['done']}, 가방 {p['have']})")
 
     def _awaiting_collect(self) -> list:
-        """수령을 기다리는 항목. collect:"none"(걸기만)은 **대상이 아니다**.
-        collect 필드가 없는 옛 항목은 alter_mode() 가 "later" 로 보므로 그대로 수령한다."""
+        """러너가 돌봐야 할 가공 카드 (waiting). 「걸기만」(none)은 **남은 등록이 있을 때만** 대상이다 — 칸을 비워야 걸 수 있다.
+        다 건 none 은 받지 않는다. collect 필드가 없는 옛 항목은 alter_mode() 가 "later" 로 보므로 그대로 수령한다."""
         return [x for x in self._leaves()
-                if x.get("status") == "waiting" and alter_mode(x.get("collect")) != "none"]
+                if x.get("status") == "waiting"
+                and (alter_mode(x.get("collect")) != "none" or alter_calls(x)[1] > 0)]
+
+    def _alter_want(self, it: dict, look: dict, settings: dict, force: bool) -> bool:
+        """지금 받으러 갈까 (N6). 수령은 날개 0 이지만 시설까지 이동이라 도는 작업을 끊는다 — 그래서 모았다 간다.
+        · 시설 완료가 설정 n(alter_collect_at, 1 ~ 칸 수) 이상
+        · 끝물 — 이 카드가 아직 받을 건(count − got)이 n 보다 적어 n 에 못 닿으면, 이 카드 이름의 작업이 전부 끝났을 때
+        · 시설이 꽉 찼고 전부 끝났다 — 더 기다릴 것이 없다
+        · 「걸기만」 — 남은 등록을 걸 칸이 없을 때, 그 몫(min(n, 남은 등록))만큼 모이면
+        · force(마지막 기회 · batch=False) — 제 것이 하나라도 끝났으면
+        · 게임이 같은 이름의 진행 중 작업 때문에 거절한 적이 있으면(collectWhole) 제 것이 전부 끝났을 때만"""
+        p = it["progress"]
+        if look["facDone"] <= 0:
+            return False
+        if p.get("collectWhole") and look["mineDone"] < look["mine"]:
+            return False
+        if force:
+            return look["mineDone"] > 0
+        n = collect_at(settings, look["cap"])
+        regs = 0 if it.get("regStop") else it["count"] - _n(p.get("done"))
+        full = bool(look["fac"]) and look["used"] >= look["cap"]
+        if alter_mode(it.get("collect")) == "none":
+            return regs > 0 and full and look["facDone"] >= min(n, regs)
+        if full and look["facDone"] >= look["used"]:
+            return True
+        # 받을 건 = 앞으로 등록할 것까지 친 수. 등록을 멈춘 카드(regStop — 재료 부족 등)는 **이미 등록한 수**까지만 받는다 —
+        # 전체 수로 세면 다 끝난 3건을 두고 6건이 모이기를 끝없이 기다린다.
+        total = _n(p.get("done")) if it.get("regStop") else it["count"]
+        if total - _n(p.get("got")) < n:
+            return look["mineDone"] == look["mine"] and (regs == 0 or full)
+        return look["facDone"] >= n
+
+    def _alter_finish(self, it: dict, look: dict) -> None:
+        """등록을 다 했고(또는 멈췄고) 받을 것도 없다 — 카드를 닫는다."""
+        p = it["progress"]
+        rs = it.pop("regStop", None)
+        p.pop("collectWhole", None)
+        if isinstance(rs, dict):
+            it["status"] = "error"
+            it["error"] = rs.get("error") or "cli_error"
+            it["message"] = (rs.get("message") or ERROR_KO.get(it["error"], "")) + f" — 이미 건 {_n(p.get('got'))}건은 받았습니다"
+            self._log(it, f"오류 {it['error']}: {it['message']}")
+            self._event("error", it["id"], f"{it['name']}: {it['error']} — {it['message']}")
+            return
+        if alter_mode(it.get("collect")) == "none":
+            self._done(it, f"가공 {_n(p.get('done'))}건 등록 완료 — 걸기만(수령하지 않습니다)")
+        elif _n(p.get("got")) < _n(p.get("done")) and not look["mine"]:
+            # 대기열에서 사라짐 — 게임에서 직접 수령했거나 등록이 안 된 것. 더 기다릴 게 없다
+            self._done(it, "대기열에 없음 — 게임에서 이미 수령했거나 등록되지 않은 것으로 봅니다 "
+                           f"(등록 {_n(p.get('done'))} · 앱이 받은 것 {_n(p.get('got'))})")
+        else:
+            self._done(it, f"가공 {_n(p.get('done'))}건 모두 받음 (등록 {_n(p.get('done'))}/{it['count']} · 수령 {_n(p.get('got'))})")
+
+    def _tick_error(self, it: dict) -> None:
+        """카드 사이 돌봄(수령·재등록)에서 난 오류 — 카드 실행에서 난 오류와 **같은 규칙**이다:
+          치명            → 보드 정지 (설정 무관)
+          그룹 안 + 그룹 「오류 시 정지」 → **그 그룹만** 멈춘다 (도는 그룹이면 이 회차를 여기서 끊는다)
+          그룹 밖 + 보드 「오류 시 정지」 → 보드 정지
+        전에는 stop_reason 만 적고 아무것도 세우지 않아 다음 카드가 그대로 돌았다.
+        보드 정지는 사용자 정지와 같은 플래그(_stop)를 쓴다 — 러너의 모든 대기 자리가 그 플래그를 본다.
+        사유(stop_reason)를 먼저 적어 두므로 _run 의 finally 가 사용자 정지로 오해하지 않는다."""
+        err = it.get("error")
+        g = self._group_of(it["id"])
+        if is_fatal(err):
+            self.stop_reason = self.stop_reason or f"fatal:{err}"
+            self._event("stop", it["id"], f"보드 정지 — {err} 는 다음 항목도 성공할 수 없는 오류")
+            self._stop.set()
+        elif g is not None:
+            if g.get("onError") == "stop" and g.get("status") == "running":
+                self._group_halt = g["id"]
+        elif self.config["onError"] == "stop":
+            self.stop_reason = self.stop_reason or "onError"
+            self._event("stop", it["id"], "보드 정지 — 설정 onError=stop")
+            self._stop.set()
 
     def _collect_ready(self, settings: dict, batch: bool | None = None) -> bool:
-        """waiting 항목 중 완료된 것을 수령. 하나라도 수령했으면 True. get_altering_works 는 waiting 이 있을 때만 읽는다.
+        """가공 카드(waiting)를 돌본다 (N6) — 카드 사이·회차 끝·체인 끝, 그리고 완료 대기(_wait_and_collect)마다.
+        대기열을 한 번 읽고(날개 0) 카드마다: 받을 때가 됐으면(_alter_want) 받으러 가고(날개 0 · 이동),
+        빈 칸이 있으면 남은 등록을 건다(건당 날개 5 · 등록 직전마다 다시 읽어 칸을 센다). 할 일이 없으면 그대로 넘어간다 —
+        n 개가 모이기 전에는 이동하지 않는다. 무언가 받았거나·걸었거나·끝냈으면 True.
 
-        `batch`(설정 `alter_batch_collect`)가 켜져 있으면 **그 카드의 작업이 전부 끝났을 때만**
-        수령한다. 기본은 꺼짐 — 하나라도 끝나면 바로 수령한다.
-
-        **날개는 어느 쪽이든 같다** (수령은 소모가 없다). 바뀌는 것은
-        **시설까지 오가는 횟수**다. 1건씩 77번 걸면 왕복도 77번인데, 모아서 받으면 확 준다.
-        대신 먼저 끝난 칸이 노는 시간이 생긴다 — 그래서 고르게 두고 기본은 꺼 둔다.
-
-        `batch=False` 를 명시하면 설정과 무관하게 **지금 받을 수 있는 것을 받는다** —
-        마지막 기회(대기 상한에 닿았을 때)에 쓴다. 안 그러면 이미 익은 것이 영영 안 나온다."""
-        if batch is None:
-            batch = bool(settings.get("alter_batch_collect", False))
+        `batch=False` 는 마지막 기회(대기 상한에 닿았을 때) — 설정과 무관하게 **지금 받을 수 있는 것을 받는다**.
+        안 그러면 이미 익은 것이 「아직 n개가 아니다」는 이유로 영영 안 나온다. (`alter_batch_collect` 설정은 이 n 으로 대신했다)"""
+        force = batch is False
         with self.lock:
             waiting = self._awaiting_collect()
         if not waiting or self._stop.is_set():
@@ -4372,9 +4818,13 @@ class Queue:
             return False
         store.set_cache("works", w.body)
         rows = work.works(w.body)["works"]
-        collected = False
+        acted = False
         for it in waiting:
-            if it["id"] in self._removed:   # 대기열을 읽는 사이 지웠다 — 지운 카드에 수령 명령을 보내지 않는다
+            if it["id"] in self._removed:   # 대기열을 읽는 사이 지웠다 — 지운 카드에 명령을 보내지 않는다
+                continue
+            if self._stop.is_set():
+                break
+            if it.get("status") != "waiting":   # 앞 카드의 수령이 같은 시설을 받아 이 카드를 닫았다
                 continue
             p = it["progress"]
             retry = _n(p.get("collectRetry"))
@@ -4383,37 +4833,47 @@ class Queue:
                 # 대기열을 **새로 읽어** 판단한다: 사라졌으면 게임에서 받은 것, Completed 면 다시 수령, InProgress 면 계속 대기.
                 left_s = float(p.get("collectRetryAt") or 0) - time.time()
                 if left_s > 0 and self._stop.wait(min(left_s, self.COLLECT_RETRY_WAIT)):
-                    return collected
+                    return acted
                 w = self._call("get_altering_works", "", READ_TIMEOUT)
                 if not w.ok:
                     continue    # 읽기 실패 — 다음 폴링에 다시
                 store.set_cache("works", w.body)
                 rows = work.works(w.body)["works"]
-            mine = [x for x in rows if x["name"] == it["name"]]
-            if not mine:   # 대기열에서 사라짐 — 게임에서 직접 수령했거나 등록이 안 된 것. 더 기다릴 게 없다
+            look = self._alter_look(it, rows)
+            regs = 0 if it.get("regStop") else it["count"] - _n(p.get("done"))
+            if regs <= 0 and (alter_mode(it.get("collect")) == "none" or not look["mine"]):
                 p.pop("collectRetry", None); p.pop("collectRetryAt", None)
-                self._done(it, "대기열에 없음 — 게임에서 이미 수령했거나 등록되지 않은 것으로 봅니다")
-                collected = True
+                self._alter_finish(it, look)
+                acted = True
                 continue
-            ready = sum(1 for x in mine if x["done"])
-            if not (all(x["done"] for x in mine) if batch else ready):
-                if batch and ready:
-                    self._log(it, f"{ready}/{len(mine)}건 완료 — 전부 끝나면 한 번에 수령합니다 (설정)")
+            if not self._alter_want(it, look, settings, force):
+                if regs > 0 and (not look["fac"] or look["used"] < look["cap"]) and not force:
+                    acted = self._alter_refill(it, settings) or acted   # 빈 칸이 있다 — 이동 없이 받을 것은 없지만 걸 것은 있다
+                    rows = self._rows_now(rows)
+                elif look["facDone"] and p.get("seen") != look["facDone"]:   # 같은 말을 폴링마다 되풀이하지 않는다
+                    p["seen"] = look["facDone"]
+                    n = collect_at(settings, look["cap"])
+                    self._log(it, f"완료 {look['facDone']}건 · 칸 {look['used']}/{look['cap']} — "
+                                  f"{n}건 모이면 받으러 갑니다 (설정)")
                 continue
-            self._log(it, f"완료 감지(폴링): {ready}/{len(mine)}건 완료" + (f" — 다시 읽음 (재시도 {retry}/{COLLECT_RETRY_MAX})" if retry else ""))
-            self._event("collect", it["id"], f"{it['name']} 완료 감지 → 수령")
+            self._log(it, f"완료 감지(폴링): 「{look['fac'] or it['name']}」 완료 {look['facDone']}건 · 이 카드 {look['mineDone']}/{look['mine']}건"
+                          + (f" — 다시 읽음 (재시도 {retry}/{COLLECT_RETRY_MAX})" if retry else ""))
+            self._event("collect", it["id"], f"{it['name']} 완료 {look['facDone']}건 → 수령")
             if self._stop.is_set():
-                return collected
+                return acted
             with self.lock:
                 self.current = it["id"]
             ok = self._precheck(it, settings)   # 수령도 실행 명령 — 부르기 전에 상태 점검
             if ok:
-                r, body = self._exec_collect(it)
+                before = {x["id"]: self._mine_count(x, rows) for x in waiting if x.get("status") == "waiting"}
+                r, body = self._exec_collect(it, look["doneName"] or it["name"])
                 if not r.ok and r.error == "not_completed_yet":
-                    # 대기열은 완료로 보였는데 게임은 아직이라고 한다(같은 시설의 다른 작업이 진행 중이거나 시각이 어긋남).
-                    # 항목을 죽이면 이미 등록·결제된 가공을 영영 못 받는다 — waiting 으로 두고 다음 기회에 다시 수령한다.
+                    # 대기열은 완료로 보였는데 게임은 아직이라고 한다 — 같은 이름의 작업이 아직 진행 중이면 그 이름으로는 못 받는다
+                    # (카탈로그). 항목을 죽이면 이미 등록·결제된 가공을 영영 못 받는다 — waiting 으로 두고, 이 카드의 작업이
+                    # 전부 끝났을 때 다시 받는다 (collectWhole).
                     it["status"] = "waiting"
-                    self._log(it, "아직 진행 중이라고 응답 — 계속 기다렸다 다시 수령합니다")
+                    p["collectWhole"] = True
+                    self._log(it, "아직 진행 중이라고 응답 — 이 이름의 작업이 전부 끝나면 다시 수령합니다")
                     continue
                 if not r.ok and r.error in COLLECT_RACE_ERRORS and retry + 1 < COLLECT_RETRY_MAX:
                     # 방금 Completed 로 읽었는데 「수령분 없음」 — 조회와 수령 캐시가 완료 순간에 어긋났거나(실제로 겪었다)
@@ -4425,7 +4885,7 @@ class Queue:
                     self._log(it, f"수령분 없음이라 응답 — 조회와 어긋남, 잠시 뒤 다시 읽어 수령합니다 ({retry + 1}/{COLLECT_RETRY_MAX})")
                     continue
                 if r.ok:
-                    p.pop("collectRetry", None); p.pop("collectRetryAt", None)
+                    p.pop("collectRetry", None); p.pop("collectRetryAt", None); p.pop("collectWhole", None)
                 if not r.ok and r.error == "collect_interrupted":
                     # 수령이 끊겼다(직접 정지·이동 실패) — 완료분은 시설에 그대로다. 카드를 닫지 않고 waiting 으로 두어 다시 받는다
                     it["status"] = "waiting"
@@ -4435,78 +4895,126 @@ class Queue:
                 if not r.ok:
                     self._exec_failed(it, r, body)
             if it.get("status") == "error" and it["id"] not in self._removed:
-                # 오류 정책 — 카드 실행에서 난 오류와 **같은 규칙**이다:
-                #   치명            → 보드 정지 (설정 무관)
-                #   그룹 안 + 그룹 「오류 시 정지」 → **그 그룹만** 멈춘다 (도는 그룹이면 이 회차를 여기서 끊는다)
-                #   그룹 밖 + 보드 「오류 시 정지」 → 보드 정지
-                # 전에는 stop_reason 만 적고 아무것도 세우지 않아 다음 카드가 그대로 돌았다.
-                # 보드 정지는 사용자 정지와 같은 플래그(_stop)를 쓴다 — 러너의 모든 대기 자리가 그 플래그를 본다.
-                # 사유(stop_reason)를 먼저 적어 두므로 _run 의 finally 가 사용자 정지로 오해하지 않는다.
-                err = it.get("error")
-                g = self._group_of(it["id"])
-                if is_fatal(err):
-                    self.stop_reason = self.stop_reason or f"fatal:{err}"
-                    self._event("stop", it["id"], f"보드 정지 — {err} 는 다음 항목도 성공할 수 없는 오류")
-                    self._stop.set()
-                elif g is not None:
-                    if g.get("onError") == "stop" and g.get("status") == "running":
-                        self._group_halt = g["id"]
-                elif self.config["onError"] == "stop":
-                    self.stop_reason = self.stop_reason or "onError"
-                    self._event("stop", it["id"], "보드 정지 — 설정 onError=stop")
-                    self._stop.set()
+                self._tick_error(it)
                 continue
-            if not ok:
+            if not ok or it.get("status") != "waiting":
                 continue
-            # **아직 익지 않은 것이 남았으면 카드를 끝내지 않는다.** 수령은 그 시설의 «완료된»
-            # 것만 가져오므로, 4건을 걸고 1건 익었을 때 받으면 3건이 게임에 그대로 남는다.
-            # 예전에는 그래도 done 으로 닫아서 **나머지를 영영 안 받았다** (등록에 쓴 날개는
-            # 이미 나간 뒤다). waiting 으로 두면 다음 폴링이 이어서 받는다.
-            rest = len(mine) - ready
-            if rest > 0:
-                it["status"] = "waiting"
-                self._log(it, f"수령 완료 (collected={body.get('collected')}, 가방 {it['progress']['have']}) — "
-                              f"{rest}건이 아직 진행 중이라 계속 기다립니다")
+            acted = True
+            # 받은 건수는 **대기열에서 사라진 제 작업 수**로 센다 (회신 collected 는 그 시설 전부 — 다른 카드·직접 건 것도 섞인다).
+            # 완료분만 세면 읽은 뒤·수령 전에 막 끝난 것이 빠진다 — 수령 사이에 등록은 없으니 사라진 것은 곧 받은 것이다.
+            # 같은 시설의 다른 가공 카드도 같이 받았다 — 그 카드들의 수령 수도 같이 올린다.
+            post = self._post_rows
+            gained_it = 0
+            for x in waiting:
+                if x.get("status") != "waiting" or x["id"] not in before:
+                    continue
+                gained = before[x["id"]] - self._mine_count(x, post) if post is not None else 0
+                if x is it and gained <= 0:
+                    # 수령 뒤 대기열을 못 읽었거나 아직 옛 모습이다 — 회신은 받았다고 한다(_exec_collect 가 확인했다). 제 완료분만큼으로 본다
+                    gained = min(look["mineDone"], _n(body.get("collected")))
+                xp = x["progress"]
+                xp["got"] = min(_n(xp.get("done")), _n(xp.get("got")) + max(0, gained))
+                if x is it:
+                    gained_it = max(0, gained)
+                elif gained > 0:
+                    self._log(x, f"같은 시설 수령에 함께 받음 {gained}건 — 수령 {xp['got']}")
+            self._log(it, f"수령 완료 (collected={body.get('collected')}, 가방 {it['progress']['have']}) — "
+                          f"등록 {_n(p.get('done'))}/{it['count']} · 수령 {_n(p.get('got'))}")
+            # 시설에 남은 제 작업 — 받기 전 수에서 받은 만큼 뺀 것과 수령 뒤 읽은 것 중 작은 쪽 (읽은 것이 옛 모습일 수 있다)
+            mine_left = max(0, look["mine"] - gained_it)
+            if post is not None:
+                mine_left = min(mine_left, self._mine_count(it, post))
+            regs = 0 if it.get("regStop") else it["count"] - _n(p.get("done"))
+            if regs > 0:
+                # 빈 칸에 남은 건을 다시 건다 (등록 직전마다 대기열을 다시 읽는다)
+                self._alter_refill(it, settings)
+                rows = self._rows_now(rows)
+                look = self._alter_look(it, rows)
+                mine_left = look["mine"]
+                regs = 0 if it.get("regStop") else it["count"] - _n(p.get("done"))
             else:
-                self._done(it, f"수령 완료 (collected={body.get('collected')}, 가방 {it['progress']['have']})")
-            collected = True
+                look = dict(look, mine=mine_left)
+            if it.get("status") == "waiting" and regs <= 0 and (alter_mode(it.get("collect")) == "none" or not mine_left):
+                self._alter_finish(it, look)
+            elif it.get("status") == "waiting":
+                left = (_n(p.get("done")) if it.get("regStop") else it["count"]) - _n(p.get("got"))
+                self._log(it, f"남은 {left}건 — 계속 기다립니다")
         with self.lock:
             self.current = None
             self._save()
-        return collected
+        return acted
+
+    def _mine_count(self, it: dict, rows: list) -> int:
+        """그 카드 시설에 있는 그 이름의 작업 수 (상태 무관)."""
+        fac = _s((it.get("progress") or {}).get("facility"))
+        return sum(1 for x in rows if x["name"] == it["name"] and (not fac or x["facility"] == fac))
+
+    def _rows_now(self, fallback: list) -> list:
+        """마지막으로 읽은 대기열 (캐시) — 못 읽었으면 fallback."""
+        try:
+            d = store.get_cache("works").get("data")
+            return work.works(d)["works"] if d is not None else fallback
+        except Exception:
+            return fallback
+
+    def _alter_refill(self, it: dict, settings: dict) -> bool:
+        """카드 사이에 빈 칸만큼 남은 등록을 건다 — 실행 명령이라 상태 점검을 먼저. 하나라도 걸었으면 True."""
+        p = it["progress"]
+        before = _n(p.get("done"))
+        with self.lock:
+            self.current = it["id"]
+        if not self._precheck(it, settings):
+            if it.get("status") == "error":
+                self._tick_error(it)
+            return False
+        self._log(it, f"빈 칸에 남은 {it['count'] - before}건을 겁니다")
+        res = self._alter_register(it, settings, soft=True)
+        if res == "fail" and it.get("status") == "error" and it["id"] not in self._removed:
+            self._tick_error(it)
+        elif (res == "ok" and it.get("status") == "waiting" and alter_mode(it.get("collect")) == "none"
+              and _n(p.get("done")) >= it["count"]):
+            self._done(it, f"가공 {_n(p.get('done'))}건 등록 완료 — 걸기만(수령하지 않습니다)")   # 다 걸었다 — 끝의 몫은 받지 않는다
+        return _n(p.get("done")) > before
 
     def _wait_and_collect(self, targets: list, settings: dict) -> None:
-        """대상 가공이 끝날 때까지 남은 시간만큼(5초~) 기다렸다 수령. 전체 상한 30분."""
+        """대상 가공 카드가 끝날 때까지 같은 규칙(_collect_ready — 모이면 받고 · 빈 칸에 다시 걸고)으로 돌보며,
+        그 사이는 남은 시간만큼(5초~) 잔다. ■ 정지를 본다.
+        상한: **진척 없이** WAIT_MAX_TOTAL(30분)이 지나면 멈춘다 — 완료가 늘거나·받거나·걸면 다시 센다
+        (한 번에 하나씩 300초씩 도는 가공 63건은 몇 시간이 걸린다 — 전체 30분으로 자르면 안 된다)."""
+        ids = {x["id"] for x in targets}
         t_end = time.time() + WAIT_MAX_TOTAL
-        names = {x["name"] for x in targets}
+        last = None
         while time.time() < t_end and not self._stop.is_set():
             with self.lock:
-                still = [x for x in self._awaiting_collect() if x["name"] in names]
+                still = [x for x in self._awaiting_collect() if x["id"] in ids]
             if not still:
                 return
-            w = self._call("get_altering_works", "", READ_TIMEOUT)
-            if not w.ok:
-                self._fail(still[0], w.error or "cli_error", w.message); return
-            store.set_cache("works", w.body)
-            rows = work.works(w.body)["works"]
-            mine = [x for x in rows if x["name"] in names]
-            batch = bool(settings.get("alter_batch_collect", False))
-            if (all(x["done"] for x in mine) if (batch and mine) else any(x["done"] for x in mine)) or not mine:
-                self._collect_ready(settings)
-                continue
-            left = min([x["left"] for x in mine if not x["done"]], default=WAIT_MIN)
+            acted = self._collect_ready(settings)
+            with self.lock:
+                still = [x for x in self._awaiting_collect() if x["id"] in ids]
+            if not still or self._stop.is_set():
+                return
+            rows = self._rows_now([])
+            facs = {_s((x.get("progress") or {}).get("facility")) for x in still} - {""}
+            names = {x["name"] for x in still}
+            rel = [r for r in rows if r["facility"] in facs or r["name"] in names]
+            sig = (sum(1 for r in rel if r["done"]), len(rel))
+            if acted or (last is not None and sig != last):
+                t_end = max(t_end, time.time() + WAIT_MAX_TOTAL)
+            last = sig
+            left = min([r["left"] for r in rel if not r["done"]], default=WAIT_MIN)
             for x in still:
-                self._log(x, f"완료 대기 — {left}초 남음")
-            self._stop.wait(min(max(float(left), WAIT_MIN), t_end - time.time()))
-        # 상한에 닿았다 — **모아 받기를 켜 놨어도 여기서는 있는 것을 받는다.** 안 그러면
-        # 이미 익은 것이 「전부 끝나지 않았다」는 이유로 영영 안 나온다.
+                self._log(x, f"완료 대기 — {left}초 남음 · 완료 {sig[0]}건")
+            self._stop.wait(max(0.0, min(max(float(left), WAIT_MIN), t_end - time.time())))
+        # 상한에 닿았다 — **n 개가 안 모였어도 여기서는 있는 것을 받는다.** 안 그러면
+        # 이미 익은 것이 「아직 n개가 아니다」는 이유로 영영 안 나온다.
         if not self._stop.is_set():
             self._collect_ready(settings, batch=False)
         with self.lock:
-            still = [x for x in self._awaiting_collect() if x["name"] in names]
+            still = [x for x in self._awaiting_collect() if x["id"] in ids]
         for x in still:
             if not self._stop.is_set():
-                self._log(x, "대기 상한(30분)에 닿음 — 다음 실행 때 수령합니다")
+                self._log(x, "진척 없이 대기 상한(30분)에 닿음 — 다음 실행 때 이어서 받습니다")
 
     def _wait_pending_alters(self, settings: dict) -> None:
         with self.lock:

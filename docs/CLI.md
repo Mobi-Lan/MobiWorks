@@ -124,6 +124,18 @@ ingredient quantity, and **ingredient transfer cost**."* — `insufficient_trans
   앱으로도 확인: 목표 도달 → `stop_action` 이 `invalid_state` → 다음 카드(못 제작)로 넘김 → 채집 `canceled` · 제작 `completed`.
 - **아직 미검증**: 채집 중 `play_music_score` 로 채집을 밀어내는 것(다음 카드가 없고 `stop_action` 이 거절될 때의 길).
 
+- **가공 칸 (실측, 2026-10-02 대표 승인)**: `execute_altering {"displayName":"가죽+"}` 을 연달아 — 1~7번 `result=started`(각 날개 5),
+  8번째는 `error=blocked · kind=unknown_modal`(「A blocking UI is covering the screen…」)이고 **날개 5 가 빠졌다.** 게임에 막는 창이 남는다.
+  `get_altering_works` 는 7건(1 InProgress · 6 NotStarted, 건당 RemainingSeconds 300) — 칸 수 필드는 없고 FacilityName 별 건수로 센다.
+  게임 화면(대표 캡처): 가공 창 위에 「**가공 추가 실패** — 가공 대기열이 가득 찼습니다.」 팝업 · 시설은 「가죽 가공 시설 **Lv.6**」,
+  아래 「모두 받기」 칸이 7개. 칸 수가 시설 레벨에 따라 달라질 수 있다(미확인) — 그래서 7을 박지 말고, 거절을 한 번 보면
+  그때의 건수를 그 시설의 칸 수로 기억해 두는 편이 안전하다.
+  → 등록 전에 그 시설의 건수를 세어 칸 수(기억값, 없으면 7)에 닿았으면 부르지 않는다.
+  그 창은 **CLI 로 닫히지 않는다 (실측)**: 창이 뜬 채로 `play_music_score` → 「Play started」, `stop_action` → 「Stop confirmed」 이었지만
+  창은 그대로였다. 이어서 `execute_gathering` → 즉시 `blocked · unknown_modal`(회신에 cost 없음 · 가방 그대로). `get_activity` 에는
+  이 창을 알려 주는 칸이 없다(Interaction.LastRunningInteractionType="Altering", Mode.MainButtonState="Compass").
+  → 창이 뜨면 사용자가 게임에서 닫을 때까지 실행 명령은 전부 막힌다. 앱은 멈추고 「창을 닫아 주세요」로 안내한다.
+
 ## 4. 실측에서 안 됐거나 믿기 어려운 것
 
 - **이름 끝 공백**: `DisplayTitle`/`Name` 이 `"… "` 로 끝나면 `change_instrument`/`play_music_score` 가
@@ -232,15 +244,17 @@ ingredient quantity, and **ingredient transfer cost**."* — `insufficient_trans
   시작 뒤 끊긴 오류(`overweight`·`tool_broken`·`blocked`)도 응답의 `gained` 를 부분 획득으로 기록한다.
   **한 개도 못 캔 회차가 2회 연속**이면 `no_progress` 로 끊는다 (빈 병 등 소모품 소진 — 안 끊으면 상한까지 날개만 태운다).
   옛 저장본(`target` = 보유 + 부족분)은 로드 때 `progress.have` 를 빼서 한 번만 보정하고 `targetMigrated` 로 표시한다.
-- **제작**: `execute_crafting {displayName, craftCount}` 1회. 시설 상한을 넘으면 CLI 가 `invalid_count(maxCount)` 로 거부 — 그대로 노출하고 멈춘다.
+- **제작**: `execute_crafting {displayName, craftCount}`. 시설 상한(학습값 `recipe_limits.json`)을 넘는 횟수는 ⌈count/상한⌉ 번으로 나눠 부른다(N7, 호출마다 날개 5).
+  상한을 모르면 한 번 통째로 보내 보고 `invalid_count(maxCount)`(시작 전 거절 · 날개 0)로 배워 그 자리에서 나눠 잇는다 — 카드를 실패로 두지 않는다. 자세한 것은 `docs/BOARD.md` §5.2.
 - **가공 — 수령 모드 셋** (가공은 걸기만 하는 것이 기본이고, 수령까지 기다릴지는 고른다):
   항목 옵션 `collect` 가 `execute_altering` 으로 등록을 마친 뒤의 행동을 정한다. **모르는 값·생략은 `"none"`** 으로 담긴다(`add`).
   | `collect` | 등록 뒤 | 예상 호출(`passesPlanned`) |
   |---|---|---|
-  | `"none"` (**기본** — 걸기만) | 그 자리에서 `done`. `waiting` 으로 두지 않고 수령도 하지 않는다 (수령은 `collect` 항목으로 따로 담는다) | `count` |
-  | `"later"` | `waiting` → **곧바로 다음 항목으로**, 항목 전환 시·회차 끝·체인 끝에 `get_altering_works` 를 읽어 완료된 것을 `complete_altering_work` 로 수령 | `count + 1` |
-  | `"wait"` | 등록 직후 그 자리에서 `RemainingSeconds` 만큼(5초~30분) 기다렸다 수령 | `count + 1` |
-  `none` 인 항목은 `_collect_ready`·`_wait_pending_alters` 의 **대상이 아니다**. 그룹 `waitAlter=true` 는 **`later` 인 자식만** `wait` 로 올린다 —
+  | `"none"` (**기본** — 걸기만) | 다 걸면 그 자리에서 `done`. 수령하지 않는다 (수령은 `collect` 항목으로 따로 담는다). 칸이 차서 남았으면 `waiting` — 칸을 비울 만큼만 받는다 | `count` (화면의 예상은 7건을 넘는 몫의 칸 비우기 왕복까지) |
+  | `"later"` | `waiting` → **곧바로 다음 항목으로**, 항목 전환 시·회차 끝·체인 끝에 `get_altering_works` 를 읽어 완료가 설정 n 개 모이면 `complete_altering_work` 로 수령하고 빈 칸에 남은 건을 다시 건다 | `count + 1` (화면의 예상은 7건마다 수령 1) |
+  | `"wait"` | 같은 규칙으로 그 자리에서 끝까지 (남은 시간만큼 자며 5초~ · 진척 없이 30분이면 멈춤) | `count + 1` (〃) |
+  **등록 직전마다 그 시설의 칸을 센다** (가공 칸 실측 아래 · N6) — 칸이 찼으면 부르지 않는다. 자세한 규칙은 `docs/BOARD.md` §5.2.
+  다 건 `none` 인 항목은 `_collect_ready`·`_wait_pending_alters` 의 **대상이 아니다**. 그룹 `waitAlter=true` 는 **`later` 인 자식만** `wait` 로 올린다 —
   사용자가 명시한 「걸기만」을 그룹 설정이 뒤집지 않는다. **`collect` 필드가 없는 옛 저장본은 `"later"` 로 읽는다**(`alter_mode`) —
   `none` 으로 읽으면 이미 등록·결제된 가공을 영영 수령하지 못한다. 이관은 없다: 저장된 `"later"` 는 그대로 두고 새로 담는 것만 `none` 이 기본이다.
 - **수령(독립 항목)**: 가공 대기열 카드의 시설별 「수령」이 `{type:"collect", facility, name}` 을 담는다 — `name` 은 그 시설에서 **완료된**

@@ -35,7 +35,7 @@ APP = "mobiworks"          # /api/health 식별자 · X-Requested-With 값
 #    쓰는 것도 이것이다 (앱 이름은 바뀔 수 있으니 이름을 박아 두지 않고 이 값으로 찾는다).
 APP_NAME = "MobiWorks"
 APP_TITLE = "모비웍스"
-VERSION = "1.0.9"
+VERSION = "1.0.10"
 
 FROZEN = bool(getattr(sys, "frozen", False))
 HERE = os.path.dirname(os.path.abspath(__file__))

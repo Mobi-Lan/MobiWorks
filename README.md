@@ -11,8 +11,8 @@
 
 | | |
 |---|---|
-| 내려받기 | **https://wo.mobimml.com/#download** — 최신판 `MobiWorks_Beta-1.0.9.zip` |
-| GitHub 에서 바로 | [Releases — 최신판](https://github.com/Mobi-Lan/MobiWorks/releases/latest) 의 `MobiWorks_Beta-1.0.9.zip` — 압축을 풀고 `MobiWorks.cmd` 를 실행하면 돼요 |
+| 내려받기 | **https://wo.mobimml.com/#download** — 최신판 `MobiWorks_Beta-1.0.10.zip` |
+| GitHub 에서 바로 | [Releases — 최신판](https://github.com/Mobi-Lan/MobiWorks/releases/latest) 의 `MobiWorks_Beta-1.0.10.zip` — 압축을 풀고 `MobiWorks.cmd` 를 실행하면 돼요 |
 | 소개 페이지 | https://wo.mobimml.com/ |
 
 **차례** — [모비폴리오 · 악보 플레이어](#모비폴리오) · [모비웍스 · 생활 작업 큐](#모비웍스) · [모바일 리모컨](#모바일-리모컨) · [시작 전에 필요한 세 가지](#시작-전에-필요한-세-가지) · [zip 하나에 두 도구](#zip-하나에-두-도구) · [개발자를 위한 안내](#개발자를-위한-안내)
@@ -355,7 +355,7 @@
 zip 파일 하나에 모비폴리오와 모비웍스가 같이 들어 있어요. 설치 없이 압축만 풀면 되고, 지울 땐 폴더만 지우면 돼요
 (시작 메뉴의 「모비웍스」도 같이 지워 주세요. 기록까지 지우려면 `%LOCALAPPDATA%\MobiWorks` 폴더도 같이 지워요).
 
-1. [Windows용 내려받기](https://wo.mobimml.com/#download)에서 `MobiWorks_Beta-1.0.9.zip` 을 받아요. [GitHub Releases](https://github.com/Mobi-Lan/MobiWorks/releases/latest)에서도 같은 파일을 받을 수 있어요. 무료 · Windows 10 / 11.
+1. [Windows용 내려받기](https://wo.mobimml.com/#download)에서 `MobiWorks_Beta-1.0.10.zip` 을 받아요. [GitHub Releases](https://github.com/Mobi-Lan/MobiWorks/releases/latest)에서도 같은 파일을 받을 수 있어요. 무료 · Windows 10 / 11.
 2. 원하는 곳에 압축을 풀어요. `MobiWorks` 폴더가 생겨요.
 3. 폴더 안의 `MobiWorks.cmd` 를 실행해요. 검은 창이 잠깐 떴다가 닫히고 앱 창이 열려요.
 4. 한 번 실행하면 시작 메뉴에 「모비웍스」가 생겨요. 다음부터는 거기서 켜면 돼요. 바탕화면에 두고 싶다면 설정 → 일반 → 「바탕화면에 바로가기 만들기」를 눌러요.
@@ -371,7 +371,7 @@ zip 파일 하나에 모비폴리오와 모비웍스가 같이 들어 있어요.
 앱이 잠깐 닫혔다 다시 열리고, 기록 · 설정은 그대로 남아요.
 
 받은 파일이 맞는지 확인하고 싶다면 [SHA256SUMS.txt](https://wo.mobimml.com/SHA256SUMS.txt) 의 값과 비교해 보세요. PowerShell 에서
-`Get-FileHash .\MobiWorks_Beta-1.0.9.zip -Algorithm SHA256` 으로 확인할 수 있어요.
+`Get-FileHash .\MobiWorks_Beta-1.0.10.zip -Algorithm SHA256` 으로 확인할 수 있어요.
 
 ---
 

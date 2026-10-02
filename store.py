@@ -243,10 +243,10 @@ DEFAULT_SETTINGS = {
     # 부르는 것뿐이고 오작동하면 날개를 태운다. **사람이 켤 때만 켠다.**
     "gather_quest_watch": "off",
     "gather_quest_retry_max": 3,   # 「다시 걸기」를 연속으로 몇 번까지 — 닿으면 멈추고 알린다
-    # 가공 수령을 모아서 할까. 켜면 **그 카드의 작업이 전부 끝났을 때만** 수령한다.
-    # **날개는 어느 쪽이든 같다** (수령은 소모가 없다) — 바뀌는 것은 시설까지 오가는 횟수다.
-    # 끄면(기본) 하나라도 끝나는 대로 받고 빈 칸을 곧바로 다시 채운다 = 처리량이 낫다.
-    "alter_batch_collect": False,
+    # 가공 완료가 n개 이상 모이면 받으러 가기 (N6, 1 ~ 시설 칸 수 7). 수령은 날개 0 이지만 시설까지 이동이라
+    # 도는 작업(채집 등)을 끊는다 — 그래서 모았다 간다. 남은 건이 n 보다 적으면 그 카드의 작업이 다 끝났을 때 받는다.
+    # **날개는 n 과 무관하다.** 예전 「전부 끝나면 한 번에 수령」(alter_batch_collect) 스위치를 대신한다.
+    "alter_collect_at": 7,
     # ── 밖에서 접속 (모바일) ──
     # **기본은 전부 꺼져 있다.** 켜는 것은 사람이 이 PC 에서 한다.
     "remote_on": False,          # 밖에서 들어올 길을 여는가 (터널 + 인증)
@@ -386,6 +386,7 @@ _RANGES = {
            "greet_step": (0.3, 10), "greet_end_lead": (-60, 60), "greet_listen_gap": (5, 600),
            "work_poll_sec": (10, 600),   # 10초 미만은 CLI 직렬 파이프를 막는다
            "queue_weight_margin": (0, 200), "queue_max_passes": (1, 500), "gather_quest_retry_max": (0, 20),
+           "alter_collect_at": (1, 7),   # 칸 수(실측 7)가 상한 — 그 시설이 기억한 칸 수가 더 적으면 러너가 거기서 또 자른다
            "wing_cap_total": (50, 1000), "wing_cap_waste": (2, 20),
            "wing_cap_window_min": (1, 120), "wing_cap_waste_min": (1, 120),
            "overlay_opacity": (20, 100), "overlay_x": (-32000, 32000), "overlay_y": (-32000, 32000),
@@ -465,7 +466,8 @@ def _coerce(k: str, v):
 # 안 쓰이고, 저장할 때 걷어 내고(set_settings), 백업에 넣지 않고, 복원 파일에 있어도 적용하지 않는다.
 #   opening_video · opening_video_path   「연출 영상」(사용자 영상 고르기) — 없앤 기능.
 #                                         경로에 사용자 이름이 들어 있으므로 백업으로 따라 나가면 안 된다.
-RETIRED_SETTINGS = ("opening_video", "opening_video_path", "ov_nearby", "ov_banner_sec")
+#   alter_batch_collect                   「가공은 전부 끝나면 한 번에 수령」 스위치 — alter_collect_at(n개 모이면 수령)이 대신한다 (N6)
+RETIRED_SETTINGS = ("opening_video", "opening_video_path", "ov_nearby", "ov_banner_sec", "alter_batch_collect")
 
 
 _last_settings: dict | None = None   # 마지막으로 제대로 읽은 설정 — 파일을 잠깐 못 열 때 기본값 대신 이것을 준다

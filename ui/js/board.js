@@ -139,9 +139,19 @@ function progOf(it,rep){const p=it.progress||{};const st=it.status;const acc=(p.
         ?`${fmtN(ps)}/${fmtN(n)}회 · +${fmtN(got)}/${fmtN(t)}개 · ${fmtN(ps+1)}회째 도는 중${bag}${acc}`
         :`${fmtN(ps)}/${fmtN(n)}회 · +${fmtN(now)}/${fmtN(t)}개${bag}${acc}`;
     return {txt,pct:fresh?null:(st==="done"?100:(t?Math.min(100,Math.round(now/t*100)):0))};}
-  if(it.type==="alter"){if(st==="waiting")return {txt:`등록됨 · 완료 감지 → 수령${p.passes?` · ${p.passes}건`:""}${acc}`,pct:null};
-    return {txt:st==="pending"&&!p.done?`${fmtN(it.count||1)}건 등록 예정`:`${fmtN(p.done||0)} / ${fmtN(it.count||1)}건${acc}`,pct:st==="pending"&&!p.done?null:Math.min(100,Math.round((p.done||0)/Math.max(1,it.count||1)*100))};}
-  const c=it.count||1;return {txt:st==="pending"&&!p.done?`${fmtN(c)}회 예정${p.per>1?` (×${p.per})`:""}`:`${fmtN(p.done||0)} / ${fmtN(c)}회${p.per>1?` (×${p.per})`:""}${acc}`,pct:st==="pending"&&!p.done?null:Math.min(100,Math.round((p.done||0)/c*100))};}
+  /* 가공 — 칸·수령을 센 카드(N6)는 「등록 14/63 · 수령 7 · 칸 5/7」. 막대는 걸기만이면 등록, 그 밖은 수령으로 찬다.
+     viewmodel.prog_of 와 **같은 글** */
+  if(it.type==="alter"){const c=it.count||1;const fresh=st==="pending"&&!p.done;
+    if(!fresh&&(p.cap!=null||p.got)){const slot=p.cap!=null?` · 칸 ${fmtN(p.slot||0)}/${fmtN(p.cap||0)}`:"";
+      const base=it.collect==="none"?(p.done||0):(p.got||0);
+      return {txt:`등록 ${fmtN(p.done||0)}/${fmtN(c)} · 수령 ${fmtN(p.got||0)}${slot}${acc}`,pct:Math.min(100,Math.round(base*100/Math.max(1,c)))};}
+    if(st==="waiting")return {txt:`등록됨 · 완료 감지 → 수령${p.passes?` · ${p.passes}건`:""}${acc}`,pct:null};
+    return {txt:fresh?`${fmtN(c)}건 등록 예정`:`${fmtN(p.done||0)} / ${fmtN(c)}건${acc}`,pct:fresh?null:Math.min(100,Math.round((p.done||0)/Math.max(1,c)*100))};}
+  const c=it.count||1;const mul=p.per>1?` (×${p.per})`:"";const fresh=st==="pending"&&!p.done;
+  /* 시설 상한으로 나눠 부르는 제작(N7) — 「3/15번 · 30/150회」. 나눌 수는 서버가 progress.passesPlanned 에 적는다 */
+  const planned=it.type==="craft"?(p.passesPlanned||1):1;
+  if(planned>1)return {txt:fresh?`${fmtN(c)}회 예정${mul} · ${fmtN(planned)}번 나눠 호출`:`${fmtN(p.calls||0)}/${fmtN(planned)}번 · ${fmtN(p.done||0)}/${fmtN(c)}회${mul}${acc}`,pct:fresh?null:Math.min(100,Math.round((p.done||0)/c*100))};
+  return {txt:fresh?`${fmtN(c)}회 예정${mul}`:`${fmtN(p.done||0)} / ${fmtN(c)}회${mul}${acc}`,pct:fresh?null:Math.min(100,Math.round((p.done||0)/c*100))};}
 /* 연주 카드의 진행 한 줄 — **카드는 연주가 끝날 때까지 돈다**. 도는 동안 폴리오가 답한 회차·경과(progress.play), 끝나면 note.
    viewmodel.play_prog 와 **같은 글** */
 function playProg(it,p,st){const pl=p.play||null;
@@ -165,15 +175,21 @@ function subOf(it){const p=it.progress||{};
 // 진행 텍스트 + 부제를 한 줄로. sub 는 HTML 을 담을 수 있어 title 용 평문을 따로 만든다
 function txOf(it,rep){const pr=progOf(it,rep||1);const sub=subOf(it);
   return {pr,sub,html:`${esc(pr.txt)}${sub?`<span class="sb"> · ${esc(sub)}</span>`:""}`,plain:`${pr.txt}${sub?" · "+sub:""}`};}
-// 호출 예상 회수 — 서버 preview(_preview_card) 와 **같은 규칙**. 가공은 등록 count 회 + 수령 1회(「걸기만」이 아닐 때 —
-// workqueue.alter_passes), 수령만 남은 waiting 은 1. 전에는 count 만 세어 카드의 「예상 N회」가 확인창과 어긋났다
+// 호출 예상 회수 — 서버 preview(_preview_card) 와 **같은 규칙**. 가공은 남은 등록 + 수령 왕복(workqueue.alter_calls —
+// 칸 7 로 보고 7건마다 한 번, 「걸기만」은 칸을 비울 때만), 제작은 시설 상한으로 나눈 남은 호출(N7 · progress.passesPlanned)
+function alterCalls(it){const p=it.progress||{};const c=Math.max(1,it.count||1);const done=Math.min(c,Math.max(0,p.done||0));
+  const got=Math.min(done,Math.max(0,p.got||0));const regs=it.regStop?0:c-done;const none=it.collect==="none";const S=7;   // workqueue.ALTER_SLOTS_DEFAULT
+  const trips=none?(done>0?Math.ceil(regs/S):Math.ceil(Math.max(0,c-S)/S)):Math.ceil(Math.max(0,c-got)/S);
+  if(it.status==="waiting"&&!none&&regs===0)return [Math.max(1,trips),0];   // 수령만 남았다 — 날개 없음
+  return [regs+trips,regs];}
 function itemCalls(it){const p=it.progress||{};if(it.type==="play"||it.type==="notify")return 0;   // 연주·알림 — 호출 없음
-  if(it.type==="gather")return p.passesPlanned||gpass(it.target||0);if(it.type==="craft"||it.type==="collect")return 1;
-  return it.status==="waiting"?1:(it.count||1)+(it.collect==="none"?0:1);}
+  if(it.type==="gather")return p.passesPlanned||gpass(it.target||0);if(it.type==="collect")return 1;
+  if(it.type==="craft")return Math.max(1,(p.passesPlanned||1)-(p.calls||0));
+  return alterCalls(it)[0];}
 /* 정령의 날개를 쓰는 호출만 센다. 소모하는 것은 execute_gathering·execute_crafting·execute_altering 셋뿐이고
    complete_altering_work(수령)는 쓰지 않는다 — 수령까지 세면 실제와 어긋난다. */
 function itemWingCalls(it){if(it.wingCalls!=null)return Number(it.wingCalls)||0;
-  if(it.type==="collect"||it.type==="play"||it.type==="notify")return 0;if(it.type==="alter")return it.status==="waiting"?0:(it.count||1);return itemCalls(it);}
+  if(it.type==="collect"||it.type==="play"||it.type==="notify")return 0;if(it.type==="alter")return alterCalls(it)[1];return itemCalls(it);}
 
 /* ── 인라인 스테퍼 (queue.js 의 방어를 그대로 옮겨 왔다 — 다시 쓰지 않는다) ──
    pending·stopped·error 만 편집. 값은 즉시 화면 반영 후 250ms 디바운스로 {op:"update"}.
@@ -411,7 +427,8 @@ function kbRowHTML(it,o){o=o||{};const col=colOf(it);const st=it.status||"pendin
   let note,noteCls="";
   if(st==="error"){const hint=errHint(it,"↻");note=`${it.error||"error"}${it.stuck?` · ${it.streak||0}회 연속 · 회차 제외`:""} · ${hint||it.message||""}`;noteCls="bad";}
   else if(st==="running")note=`<i class="sd blink"></i>${esc(stageOf(it))} · ${elapsedHTML(cardStart(it))} · ${esc(pr.txt)}`;
-  else if(st==="waiting")note=`<i class="sd warn"></i>가공 대기 · <span data-qw="${esc(it.name||"")}">${esc(waitTxt(it.name))}</span>`;
+  // 칸·수령을 센 가공(N6)은 그 줄도 — 「가공 대기 · 등록 14/63 · 수령 7 · 칸 5/7 · 04:12 · 21:30 완료」
+  else if(st==="waiting")note=`<i class="sd warn"></i>가공 대기 · ${(p.cap!=null||p.got)?`${esc(pr.txt)} · `:""}<span data-qw="${esc(it.name||"")}">${esc(waitTxt(it.name))}</span>`;
   // 채집 대기: 「예상 3회 · 날개 15 · 가방 47 → 목표 297」 (가방을 모르면 「… · 회당 최대 100」)
   else if(st==="pending"&&it.type==="gather"){const n=itemCalls(it);const h=p.have;
     note=`${inner?'<i class="sd"></i>대기 · ':""}예상 ${fmtN(n)}회 · 날개 ${fmtN(n*5)} · ${esc(h!=null?`가방 ${fmtN(h)} → 목표 ${fmtN(h+(it.target||0))}`:t.sub)}`;}

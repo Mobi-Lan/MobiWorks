@@ -301,11 +301,17 @@ def prog_of(it: dict, rep: int = 1) -> dict:
                                   (min(100, int(now * 100 / target + 0.5)) if target else 0))
         return {"txt": txt, "pct": pct}
     if t == "alter":
+        c = _n(it.get("count"), 1)
+        fresh = st == "pending" and not p.get("done")
+        if not fresh and (p.get("cap") is not None or _n(p.get("got"))):
+            # 칸·수령을 센 카드 (N6) — 「등록 14/63 · 수령 7 · 칸 5/7」. 막대는 걸기만이면 등록, 그 밖은 수령으로 찬다
+            slot = f" · 칸 {_fmt(_n(p.get('slot')))}/{_fmt(_n(p.get('cap')))}" if p.get("cap") is not None else ""
+            base = _n(p.get("done")) if it.get("collect") == "none" else _n(p.get("got"))
+            return {"txt": f"등록 {_fmt(_n(p.get('done')))}/{_fmt(c)} · 수령 {_fmt(_n(p.get('got')))}{slot}{acc}",
+                    "pct": min(100, int(base * 100 / max(1, c) + 0.5))}   # 반올림은 JS Math.round 와 같게
         if st == "waiting":
             n = _n(p.get("passes"))
             return {"txt": f"등록됨 · 완료 감지 → 수령{f' · {n}건' if n else ''}{acc}", "pct": None}
-        c = _n(it.get("count"), 1)
-        fresh = st == "pending" and not p.get("done")
         return {"txt": f"{_fmt(c)}건 등록 예정" if fresh
                 else f"{_fmt(_n(p.get('done')))} / {_fmt(c)}건{acc}",
                 "pct": None if fresh else min(100, round(_n(p.get("done")) / max(1, c) * 100))}
@@ -313,6 +319,12 @@ def prog_of(it: dict, rep: int = 1) -> dict:
     per = _n(p.get("per"), 1)
     mul = f" (×{per})" if per > 1 else ""
     fresh = st == "pending" and not p.get("done")
+    planned = _n(p.get("passesPlanned"), 1) if t == "craft" else 1
+    if t == "craft" and planned > 1:
+        # 시설 상한으로 나눠 부르는 제작 (N7) — 「3/15번 · 30/150회」
+        return {"txt": f"{_fmt(c)}회 예정{mul} · {_fmt(planned)}번 나눠 호출" if fresh
+                else f"{_fmt(_n(p.get('calls')))}/{_fmt(planned)}번 · {_fmt(_n(p.get('done')))}/{_fmt(c)}회{mul}{acc}",
+                "pct": None if fresh else min(100, round(_n(p.get("done")) / max(1, c) * 100))}
     return {"txt": f"{_fmt(c)}회 예정{mul}" if fresh
             else f"{_fmt(_n(p.get('done')))} / {_fmt(c)}회{mul}{acc}",
             "pct": None if fresh else min(100, round(_n(p.get("done")) / max(1, c) * 100))}
@@ -345,17 +357,19 @@ def sub_of(it: dict, snap: dict, events: list) -> str:
 def item_calls(it: dict) -> int:
     """호출 예상 회수 — 서버 `preview`(`_preview_card`) 와 **같은 규칙**.
 
-    가공은 등록 count 회 **+ 수령 1회**(「걸기만」이 아닐 때) 다 (`wq.alter_passes`). 등록을 마치고
-    수령만 남은 waiting 은 1. 전에는 count 만 세어 카드의 「예상 N회」가 확인창의 수와 어긋났다."""
+    가공은 남은 등록 + 수령 왕복(7건마다 한 번 — `wq.alter_calls`, N6). 7건 이하면 등록 count + 수령 1(걸기만 count),
+    수령만 남은 waiting 은 1. 제작은 시설 상한으로 나눈 남은 호출(N7). 전에는 count 만 세어 카드의 「예상 N회」가 확인창의 수와 어긋났다."""
     p = it.get("progress") or {}
     t = it.get("type")
     if t in FREE_TYPES:
         return 0
     if t == "gather":
         return _n(p.get("passesPlanned")) or wq.gather_plan(_n(it.get("target")))["passesPlanned"]
-    if t in ("craft", "collect"):
+    if t == "collect":
         return 1
-    return 1 if it.get("status") == "waiting" else wq.alter_passes(_n(it.get("count"), 1), it.get("collect"))
+    if t == "craft":   # 시설 상한으로 나눈 남은 호출 (N7) — 서버가 progress.passesPlanned 에 적어 둔다
+        return max(1, _n(p.get("passesPlanned"), 1) - _n(p.get("calls")))
+    return wq.alter_calls(it)[0]   # 남은 등록 + 수령 왕복 (N6)
 
 
 def item_wing_calls(it: dict) -> int:
@@ -366,7 +380,7 @@ def item_wing_calls(it: dict) -> int:
     if it.get("type") == "collect" or it.get("type") in FREE_TYPES:
         return 0
     if it.get("type") == "alter":
-        return 0 if it.get("status") == "waiting" else _n(it.get("count"), 1)
+        return wq.alter_calls(it)[1]   # 남은 등록만 — 수령은 날개 0
     return item_calls(it)
 
 

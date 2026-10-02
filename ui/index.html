@@ -159,10 +159,11 @@
           <h2>제작·채집 큐</h2>
           <div class="set-r"><span class="lb"><b>무게 여유</b><i>가방 남은 무게가 이 값 안으로 들어오면 채집을 시작하지 않습니다 (overweight_soon) · 0–200</i></span>
             <span class="set-num"><button type="button" data-ss="-1" data-for="sQWeight" data-step="1" title="−1">−</button><input type="number" id="sQWeight" min="0" max="200"><button type="button" data-ss="1" data-for="sQWeight" data-step="1" title="+1">+</button></span></div>
-          <div class="set-r"><span class="lb"><b>가공은 전부 끝나면 한 번에 수령</b><i>끄면(기본) 하나라도 끝나는 대로 받고 빈 칸을 바로 다시 채웁니다 — 처리량이 낫습니다.
-            켜면 그 카드의 작업이 <b>전부</b> 끝날 때까지 기다렸다 한 번에 받습니다 — 시설까지 오가는 횟수가 줍니다.
-            <b>정령의 날개는 어느 쪽이든 같습니다</b> (수령은 날개를 쓰지 않습니다).</i></span>
-            <label class="set-sw"><input type="checkbox" id="sBatchCollect"><i></i></label></div>
+          <!-- N6 — 가공 수령을 모아서 간다 (예전 「전부 끝나면 한 번에 수령」 스위치를 대신한다). 시안에 없는 줄이라 옆 줄과 같은 꼴로만 둔다 -->
+          <div class="set-r"><span class="lb"><b>가공 완료가 n개 이상 모이면 받으러 가기</b><i>수령은 시설까지 이동이라 하던 작업을 끊습니다 — 완료가 이만큼 모일 때까지는 받으러 가지 않고,
+            받은 뒤 빈 칸에 남은 가공을 다시 겁니다. 남은 건이 이보다 적으면 다 끝났을 때 받습니다.
+            <b>정령의 날개는 같습니다</b> (수령은 날개를 쓰지 않습니다) · 1–7 (시설 칸 수가 상한) · 기본 7</i></span>
+            <span class="set-num"><button type="button" data-ss="-1" data-for="sAlterAt" data-step="1" title="−1">−</button><input type="number" id="sAlterAt" min="1" max="7"><button type="button" data-ss="1" data-for="sAlterAt" data-step="1" title="+1">+</button></span></div>
           <div class="set-r"><span class="lb"><b>큐가 끝나면 알림</b><i>보드가 끝나면(■ 정지는 빼고) 「큐가 끝났습니다 — 완료 n · 실패 m」 — PC 게임 위 밴드 토스트 · 앱 창 토스트 · 모바일(화면이 열려 있을 때) 토스트·진동.
             중간 알림은 담기 서랍의 「알림」 카드로 원하는 자리에 담습니다 (queue_done_notify)</i></span>
             <label class="set-sw"><input type="checkbox" id="sQDoneNotify"><i></i></label></div>
